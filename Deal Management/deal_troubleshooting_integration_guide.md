@@ -267,8 +267,7 @@ https://mcp.pubmatic.com/v1
         "items": {
           "type": "object",
           "properties": {
-            "issue": {"type": "string"},
-            "impact": {"type": "string"},
+            "issue": {"type": "string"},            
             "evidence": {"type": "string"}
           }
         }
@@ -279,8 +278,6 @@ https://mcp.pubmatic.com/v1
           "type": "object",
           "properties": {
             "action": {"type": "string"},
-            "expected_impact": {"type": "string"},
-            "priority": {"type": "string"}
           }
         }
       }
@@ -344,31 +341,23 @@ https://mcp.pubmatic.com/v1
       },
       "root_causes": [
         {
-          "issue": "Targeting constraints too narrow",
-          "impact": "high",
+          "issue": "Targeting constraints too narrow",          
           "evidence": "Geographic targeting limited to 3 DMAs with low inventory availability"
         },
         {
-          "issue": "Price floor too high for current market conditions",
-          "impact": "medium",
+          "issue": "Price floor too high for current market conditions",          
           "evidence": "Current floor ($12.50) is 30% above market average for similar inventory"
         }
       ],
       "recommendations": [
         {
-          "action": "Expand geographic targeting to include 5 additional high-performing DMAs",
-          "expected_impact": "Potential 40% increase in fill rate",
-          "priority": "high"
+          "action": "Expand geographic targeting to include 5 additional high-performing DMAs"                    
         },
         {
-          "action": "Adjust price floor to $9.75 to align with current market conditions",
-          "expected_impact": "Potential 15% increase in win rate",
-          "priority": "medium"
+          "action": "Adjust price floor to $9.75 to align with current market conditions"                    
         },
         {
-          "action": "Review creative assets for compliance with publisher requirements",
-          "expected_impact": "Reduce rejection rate by up to 10%",
-          "priority": "medium"
+          "action": "Review creative assets for compliance with publisher requirements"         
         }
       ]
     }
