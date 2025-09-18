@@ -4,20 +4,20 @@
 
 The PubMatic Deal Creation and Copy Agent enables programmatic creation and cloning of advertising deals through an AI-powered interface. The agent streamlines the deal setup process by validating fields according to business rules, enforcing required fields based on deal type, and providing a conversational interface for deal management operations.
 
-This guide provides technical documentation for DSPs (Demand-Side Platforms) and publishers who want to integrate with PubMatic's Deal Creation and Copy Agent via the Model Calling Protocol (MCP) Server.
+This guide provides technical documentation for DSPs (Demand-Side Platforms), Buyers and publishers who want to integrate with PubMatic's Deal Creation and Copy Agent via the Model Calling Protocol (MCP) Server.
 
 > **Note**: For common architecture diagrams, authentication flows, and general integration approaches, please refer to the [Deal Management README](./README.md).
 
 ## Agent description
 
-The agent facilitates the creation and cloning of various types of programmatic advertising deals (PMP, PG, Preferred) through natural language instructions, ensuring all business rules and field requirements are met.
+The agent facilitates the creation and cloning of various types of programmatic advertising deals (PMP, PG, Preferred, Acuction Packages) through natural language instructions, ensuring all business rules and field requirements are met.
 
 ## Key capabilities
 
 - **Deal creation**: Create new deals with appropriate validation for required fields
 - **Deal cloning**: Copy existing deals with the ability to modify specific attributes
 - **Field validation**: Enforce business rules for different deal types
-- **Deal type support**: Handle PMP, PG, and Preferred deal types with their specific requirements
+- **Deal type support**: Handle PMP, PG, Preferred and Auction Packages deal types with their specific requirements
 
 ## Deal type requirements
 
