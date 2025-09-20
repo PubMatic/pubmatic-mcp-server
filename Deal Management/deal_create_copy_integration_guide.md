@@ -39,59 +39,58 @@ The Deal Creation and Copy Agent delivers:
 
 ## API Endpoints for Deal Creation and Copy
 
-> **Note**: For common API endpoints like tool discovery and authentication, please refer to the [Deal Management README](./README.md).
+> **Note**: For common API endpoints like authentication, please refer to the [Deal Management README](./README.md).
 
-#### 1. Tool Schema
+#### 1. Tool Discovery and Schema (JSON-RPC)
 
-**Endpoint**: `GET /v1/read_resource/deal_management`
+- Method: `tools/list`
+- Transport: POST JSON-RPC 2.0 to your MCP server endpoint (e.g., `/v1/tools`)
 
-**Description**: Retrieve detailed schema information for the deal management tool.
-
-**Response Format**:
+Request:
 ```json
 {
-  "name": "deal_management",
-  "title": "Deal Creation and Copy Agent",
-  "description": "Creates or clones deals (PMP, PG, Preferred)",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "query": {
-        "type": "string",
-        "description": "Current input from the user"
-      },
-      "message_history": {
-        "type": "array",
-        "description": "Conversation history as a list of messages. Each item: {role: 'user'|'assistant', content: string}. Required.",
-        "items": {
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+Response (excerpt showing deal_management):
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "deal_management",
+        "description": "Creates or clones deals (PMP, PG, Preferred, Auction Packages)",
+        "inputSchema": {
           "type": "object",
           "properties": {
-            "role": {
-              "type": "string",
-              "enum": ["user", "assistant"]
-            },
-            "content": {
-              "type": "string"
+            "query": { "type": "string", "description": "Current input from the user" },
+            "message_history": {
+              "type": "array",
+              "description": "Conversation history as a list of messages. Each item: {role: 'user'|'assistant', content: string}.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": { "type": "string", "enum": ["user", "assistant"] },
+                  "content": { "type": "string" }
+                }
+              }
             }
-          }
+          },
+          "required": ["query", "message_history"]
         }
       }
-    },
-    "required": ["query", "message_history"]
-  },
-  "outputSchema": {
-    "type": "object",
-    "properties": {
-      "result": {
-        "type": "string",
-        "description": "The result of the deal management operation"
-      }
-    }
+    ]
   }
 }
 ```
 
-#### 3. Tool Execution
+#### 2. Tool Execution
 
 **Endpoint**: `POST /v1/tools/deal_management`
 

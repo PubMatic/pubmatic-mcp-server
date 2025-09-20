@@ -38,72 +38,42 @@ The Deal Troubleshooting Agent delivers:
 
 ## API Endpoints for Deal Troubleshooting
 
-> **Note**: For common API endpoints like tool discovery and authentication, please refer to the [Deal Management README](./README.md).
+> **Note**: For common API endpoints like authentication, please refer to the [Deal Management README](./README.md).
 
-#### 1. Tool Schema
+#### 1. Tool Discovery and Schema (JSON-RPC)
 
-**Endpoint**: `GET /v1/read_resource/deal_troubleshooting`
+- Method: `tools/list`
+- Transport: POST JSON-RPC 2.0 to your MCP server endpoint (e.g., `/v1/tools`)
 
-**Description**: Retrieve detailed schema information for the deal troubleshooting tool.
-
-**Response Format**:
+Request:
 ```json
 {
-  "name": "deal_troubleshooting",
-  "title": "Deal Troubleshooting Agent",
-  "description": "Diagnose and resolve deal performance issues",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "deal_id": {
-        "type": "string",
-        "description": "ID of the deal to troubleshoot"
-      }
-    },
-    "required": ["deal_id"]
-  },
-  "outputSchema": {
-    "type": "object",
-    "properties": {
-      "deal_info": {
-        "type": "object",
-        "properties": {
-          "id": {"type": "string"},
-          "name": {"type": "string"},
-          "advertiser": {"type": "string"},
-          "start_date": {"type": "string"},
-          "end_date": {"type": "string"},
-          "deal_type": {"type": "string"}
-        }
-      },
-      "performance_summary": {
-        "type": "object",
-        "properties": {
-          "status": {"type": "string"},
-          "primary_issues": {"type": "array", "items": {"type": "string"}},
-          "health_score": {"type": "number"}
-        }
-      },
-      "root_causes": {
-        "type": "array",
-        "items": {
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+Response (excerpt showing deal_troubleshooting):
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "deal_troubleshooting",
+        "description": "Diagnose and resolve deal performance issues",
+        "inputSchema": {
           "type": "object",
           "properties": {
-            "issue": {"type": "string"},            
-            "evidence": {"type": "string"}
-          }
-        }
-      },
-      "recommendations": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "action": {"type": "string"},
-          }
+            "deal_id": { "type": "string", "description": "ID of the deal to troubleshoot" }
+          },
+          "required": ["deal_id"]
         }
       }
-    }
+    ]
   }
 }
 ```

@@ -92,13 +92,11 @@ sequenceDiagram
     User->>Claude: Request (e.g., "Create a deal" or "Troubleshoot deal XYZ")
     Claude->>Auth: Get authentication credentials
     Auth->>Claude: API key for request authorization
-    Claude->>MCP: GET /v1/list_resources with API key
-    MCP-->>Claude: Available tools (deal_management, deal_troubleshooting)
+    Claude->>MCP: POST JSON-RPC tools/list (with API key)
+    MCP-->>Claude: Available tools with inputSchema
     Claude->>Claude: Determine appropriate tool based on request
-    Claude->>MCP: GET /v1/read_resource/<tool_name> with API key
-    MCP-->>Claude: Tool schema and parameters
     Claude->>Claude: Extract parameters from user query
-    Claude->>MCP: POST /v1/tools/<tool_name> with API key
+    Claude->>MCP: POST JSON-RPC tools/call { name: <tool_name>, parameters: {...} }
     MCP->>Agent: Forward request to appropriate agent
     Agent-->>MCP: Results or follow-up questions
     MCP-->>Claude: Response from agent
@@ -137,7 +135,7 @@ Both Claude Desktop and ChatGPT Desktop support API key configuration for extern
 ## Getting Started
 
 - **Request API access:** Contact your PubMatic representative to request access to the MCP Server and the Deal Management Agents.
-- **Explore available tools:** Use the /list_resources endpoint to discover available tools and their capabilities.
+- **Explore available tools:** Use the JSON-RPC method tools/list to discover available tools and their capabilities.
 - **Plan your integration:** Decide whether you need an AI assistant integration, direct API integration, or both.
 - **Implement authentication:** Set up secure storage and handling of your API key.
 - **Build a prototype:** Start with a simple integration to test the API and understand the response formats.
@@ -166,35 +164,72 @@ Contact your PubMatic representative to obtain an API key for your organization.
 https://mcp.pubmatic.com/v1
 ```
 
-### Common Endpoints
+### Common Endpoints (MCP Tools)
 
-#### 1. Tool Discovery
+#### 1. Tool Discovery (JSON-RPC)
 
-**Endpoint**: `GET /v1/list_resources`
+- Method: tools/list
+- Transport: POST JSON-RPC 2.0 to your MCP server endpoint (e.g., /v1/tools)
 
-**Description**: Retrieve a list of all available tools, including deal management tools.
-
-**Response Format**:
+Request:
 ```json
 {
-  "resources": [
-    {
-      "type": "function",
-      "function": {
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+Response:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
         "name": "deal_management",
-        "description": "Creates or clones deals (PMP, PG, Preferred)"
-      }
-    },
-    {
-      "type": "function",
-      "function": {
+        "description": "Creates or clones deals (PMP, PG, Preferred)",
+        "inputSchema": { "type": "object", "properties": { /* ... */ } }
+      },
+      {
         "name": "deal_troubleshooting",
-        "description": "Diagnose and resolve deal performance issues"
+        "description": "Diagnose and resolve deal performance issues",
+        "inputSchema": { "type": "object", "properties": { "deal_id": { "type": "string" } }, "required": ["deal_id"] }
       }
-    },
-    // Other available tools...
-  ],
-  "cursor": null
+    ]
+  }
+}
+```
+
+#### 2. Tool Execution (JSON-RPC)
+
+- Method: tools/call
+- Transport: POST JSON-RPC 2.0 to your MCP server endpoint (e.g., /v1/tools)
+
+Request:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "deal_troubleshooting",
+    "parameters": { "deal_id": "XYZ123" }
+  }
+}
+```
+
+Response:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [ { "type": "text", "text": "..." } ],
+    "structuredContent": { /* optional structured data per tool */ }
+  }
 }
 ```
 
@@ -207,17 +242,14 @@ sequenceDiagram
     participant Client as Client Application
     participant MCP as PubMatic MCP Server
     
-    Client->>MCP: GET /v1/list_resources
-    MCP-->>Client: Available tools (including deal_troubleshooting)
+    Client->>MCP: POST JSON-RPC tools/list
+    MCP-->>Client: tools[] with descriptions and inputSchema
     
-    Client->>MCP: GET /v1/read_resource/deal_troubleshooting
-    MCP-->>Client: Tool schema and parameters
+    Client->>MCP: POST JSON-RPC tools/call { name: "deal_troubleshooting", parameters: { deal_id: "XYZ123" } }
+    Note right of Client: JSON-RPC 2.0 request body
     
-    Client->>MCP: POST /v1/tools/deal_troubleshooting
-    Note right of Client: JSON-RPC 2.0 format with deal_id
-    
-    MCP-->>Client: Structured response with analysis
-    Note left of MCP: Contains deal info, performance data,<br/>root causes, and recommendations
+    MCP-->>Client: Result with content and optional structuredContent
+    Note left of MCP: May include deal info, performance data,<br/>root causes, and recommendations
 ```
 
 ## Future Development
