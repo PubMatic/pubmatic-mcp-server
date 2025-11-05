@@ -21,6 +21,7 @@ Programmatic supply chains work best when information flows freely and securely 
 This repository contains specifications for the following tools:
 
 - **[Deal Management](./Deal%20Management/)**: Tools for deal creation and troubleshooting, enabling seamless communication between publishers, buyers, and DSPs
+- **[Inventory Discovery](./Inventory%20Discovery/)**: Buyer-focused tools to discover and curate supply packages with structured, machine-readable outputs
 
 ## Benefits of Agent-to-Agent Communication
 

@@ -78,7 +78,7 @@ X-API-Key: your-api-key
       "impressions": 2200658200,
       "ecpm": 14.0,
       "createdAt": "2025-10-28T02:33:44.000Z",
-      "similarity": 0.65,
+      "similarity": 0.95,
       "matchType": "primary_match",
       "matchExplanation": "Country, genre, and IAB17 (Sports) all match exactly; language is English as requested, and additional sports subcategories like cricket and basketball are included."
     },
@@ -91,7 +91,7 @@ X-API-Key: your-api-key
       "impressions": 2200658200,
       "ecpm": 14.0,
       "createdAt": "2025-10-28T02:34:19.000Z",
-      "similarity": 0.64,
+      "similarity": 0.94,
       "matchType": "primary_match",
       "matchExplanation": "All key parameters—country, genre, IAB17 (Sports), and English language—match perfectly, with extra sports subgenres like cricket and football broadening the reach."
     },
@@ -104,7 +104,7 @@ X-API-Key: your-api-key
       "impressions": 2693403000,
       "ecpm": 11.0,
       "createdAt": "2025-10-14T06:26:16.000Z",
-      "similarity": 0.6,
+      "similarity": 0.9,
       "matchType": "primary_match",
       "matchExplanation": "All user brief fields match: US, sports genres, English, and IAB17 (Sports); package also covers subgenres like football, cricket, and basketball for comprehensive sports reach."
     }
@@ -157,6 +157,4 @@ Note: Pagination parameters are ignored in the current version of this tool.
 
 ## Change Log
 
-- v0.3: Simplified to a single `brief` parameter; agent infers filters and curates accordingly.
-- v0.2: Consolidated into single `inventory_discovery` tool with optional filters and shortlist.
-- v0.1: Initial specification (draft) aligned with Deal Management conventions.
+- v0.1: Simplified to a single `brief` parameter; agent infers filters and curates accordingly. Consolidated into single `inventory_discovery` tool with optional filters and shortlist.
