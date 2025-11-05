@@ -26,7 +26,7 @@ Deal management, including creation and troubleshooting, is one of the most freq
 
 ## Integration Architecture
 
-The Deal Management Agents run on PubMatic's MCP Server using the standardized Model Calling Protocol. This architecture enables seamless integration with client applications, including AI assistants such as Claude Desktop and ChatGPT Desktop.
+The Deal Management Agents run on PubMatic's MCP Server using the standardized Model Context Protocol. This architecture enables seamless integration with client applications, including AI assistants such as Claude Desktop and ChatGPT Desktop.
 
 ### Integration Flow Diagram
 

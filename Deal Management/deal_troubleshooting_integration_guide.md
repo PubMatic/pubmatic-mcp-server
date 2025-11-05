@@ -4,7 +4,7 @@
 
 The PubMatic Deal Troubleshooting Agent uses AI-powered diagnostics to identify and resolve programmatic deal performance issues.This agent blends analyst‑defined expertise with modern LLM reasoning. Applying this combination on PubMatic's advertising data ecosystem enables dynamic, context-aware diagnostics and data-driven recommendations—going well beyond a static rule-based engine to adapt to the nuances of each deal scenario. 
 
-This guide provides technical documentation for DSPs (Demand-Side Platforms), Buyers and publishers who want to integrate with PubMatic's Deal Troubleshooting Agent via the Model Calling Protocol (MCP) Server.
+This guide provides technical documentation for DSPs (Demand-Side Platforms), Buyers and publishers who want to integrate with PubMatic's Deal Troubleshooting Agent via the Model Context Protocol (MCP) Server.
 
 > **Note**: For common architecture diagrams, authentication flows, and general integration approaches, please refer to the [Deal Management README](./README.md).
 
