@@ -14,7 +14,10 @@ All screenshots referenced in this guide are stored in the `screenshots/` folder
 - External PubMatic authentication details:
   - Bearer Token
   - Resource ID
-  - Resource Type (`PUBLISHER`, `DSP`, or `BUYER`)
+  - Resource Type (`PUBLISHER`, `DSP`, `BUYER` or `Activate Advertiser`)
+
+## Refer to the PubMatic API documentation to learn how to generate a PubToken and obtain other required credentials:
+## https://help.pubmatic.com/activate/reference/get-started-with-pubmatic-apis
 
 ---
 
