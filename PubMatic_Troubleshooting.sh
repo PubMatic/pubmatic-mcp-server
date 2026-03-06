@@ -6,8 +6,8 @@ MIN_VERSION="3.8"
 MAX_VERSION="3.13.99"
 
 echo "----------------------------------------"
-echo " PubMatic MCP Server - Environment Setup"
-echo " Python & SSL Certificate Troubleshooter"
+echo " PubMatic MCP Server - Setup Check"
+echo " Python + SSL Fix for Claude Desktop"
 echo "----------------------------------------"
 
 # Function to compare versions
@@ -29,20 +29,20 @@ CURRENT_VERSION=""
 if command -v python3 &> /dev/null
 then
     CURRENT_VERSION=$(python3 --version | awk '{print $2}')
-    echo "Detected Python version: $CURRENT_VERSION"
+    echo "Found Python: $CURRENT_VERSION"
 
     if version_in_range "$CURRENT_VERSION" "$MIN_VERSION" "$MAX_VERSION"; then
-        echo "✅ Python version is between 3.8 and 3.13.x. No installation required."
-        echo "Proceeding to SSL certificate setup..."
+        echo "✅ Python is already in the supported range (3.8 - 3.13.x)."
+        echo "Going ahead to certificate setup."
         SKIP_INSTALL=true
     else
-        echo "⚠️ Python version is outside the required range."
-        echo "Proceeding with Python 3.12 installation/update..."
+        echo "⚠️ Python version is outside the supported range."
+        echo "Installing/updating to supported Python 3.12..."
         SKIP_INSTALL=false
     fi
 else
-    echo "⚠️ Python3 is not installed."
-    echo "Proceeding with Python 3.12 installation..."
+    echo "⚠️ Python 3 is not installed on this machine."
+    echo "Installing supported Python 3.12 first."
     SKIP_INSTALL=false
 fi
 
@@ -52,11 +52,11 @@ if [ "$SKIP_INSTALL" = false ]; then
     # Install Homebrew if not present
     if ! command -v brew &> /dev/null
     then
-        echo "Homebrew not found. Installing Homebrew..."
+        echo "Required package manager is missing. Installing Homebrew..."
         if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
         then
-            echo "❌ Homebrew installation failed."
-            echo "Reach out to Pubmatic for troubleshooting the issue."
+            echo "❌ Could not install Homebrew."
+            echo "Please reach out to Pubmatic support."
             exit 1
         fi
 
@@ -65,34 +65,34 @@ if [ "$SKIP_INSTALL" = false ]; then
         fi
     fi
 
-    echo "Updating Homebrew..."
-    brew update || echo "⚠️  brew update encountered warnings (possibly unrelated cask issues). Continuing..."
+    echo "Updating package manager metadata..."
+    brew update || echo "⚠️ Some package manager metadata could not be refreshed. Continuing with setup."
 
     echo "Installing Python 3.12..."
     if ! brew install python@3.12
     then
-        echo "❌ Python installation failed."
-        echo "Reach out to Pubmatic for troubleshooting the issue."
+        echo "❌ Could not install Python 3.12."
+        echo "Please reach out to Pubmatic support."
         exit 1
     fi
 
     echo "Linking Python 3.12..."
     if ! brew link --overwrite --force python@3.12
     then
-        echo "❌ Python linking failed."
-        echo "Reach out to Pubmatic for troubleshooting the issue."
+        echo "❌ Could not complete Python setup."
+        echo "Please reach out to Pubmatic support."
         exit 1
     fi
 
     # Final verification
     if command -v python3.12 &> /dev/null
     then
-        echo "✅ Python 3.12 installed successfully."
+        echo "✅ Python 3.12 is installed."
         python3.12 --version
         CURRENT_VERSION=$(python3.12 --version | awk '{print $2}')
     else
-        echo "❌ Python 3.12 installation verification failed."
-        echo "Reach out to Pubmatic for troubleshooting the issue."
+        echo "❌ Could not verify Python 3.12 installation."
+        echo "Please reach out to Pubmatic support."
         exit 1
     fi
 
@@ -101,7 +101,7 @@ fi
 # ─── STEP 1: DETECT ACTUAL PYTHON BINARY PATH ────────────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Detecting Python binary path..."
+echo "Finding the Python executable to use..."
 echo "----------------------------------------"
 
 # Derive minor version from the validated CURRENT_VERSION (e.g. 3.13.7 → 3.13)
@@ -128,40 +128,40 @@ fi
 
 if [ -z "$ACTUAL_PYTHON_BIN" ]; then
     echo "❌ Could not detect Python binary path."
-    echo "Reach out to Pubmatic for troubleshooting the issue."
+    echo "Please reach out to Pubmatic support."
     exit 1
 fi
 
-echo "✅ Detected Python binary: $ACTUAL_PYTHON_BIN"
+echo "✅ Python executable selected for this setup."
 
 # ─── STEP 2: ENSURE /usr/local/bin EXISTS ────────────────────────────────────
 # On Apple Silicon Macs (M1/M2/M3), /usr/local/bin may not exist by default
 # since Homebrew installs to /opt/homebrew instead.
 if [ ! -d /usr/local/bin ]; then
-    echo "Creating /usr/local/bin directory..."
+    echo "Preparing system path for setup helper..."
     sudo mkdir -p /usr/local/bin
-    echo "✅ /usr/local/bin created."
+    echo "✅ Ready."
 fi
 
 # ─── STEP 3: BACK UP EXISTING python3 SYMLINK ────────────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Backing up existing python3 symlink..."
+echo "Backing up your current python3 command..."
 echo "----------------------------------------"
 
 if [ -f /usr/local/bin/python3 ] || [ -L /usr/local/bin/python3 ]; then
     # Remove any previous backup before overwriting to avoid mv collision on re-runs
     sudo rm -f /usr/local/bin/python3.symlink.bak
     sudo mv /usr/local/bin/python3 /usr/local/bin/python3.symlink.bak
-    echo "✅ Backed up to /usr/local/bin/python3.symlink.bak"
+    echo "✅ Existing command backed up."
 else
-    echo "ℹ️  No existing /usr/local/bin/python3 found. Skipping backup."
+    echo "ℹ️ No previous override to back up."
 fi
 
 # ─── STEP 4: CREATE SSL WRAPPER SCRIPT ───────────────────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Creating python3 SSL wrapper script..."
+echo "Creating SSL-safe Python launcher..."
 echo "----------------------------------------"
 
 sudo tee /usr/local/bin/python3 > /dev/null <<SH
@@ -171,12 +171,12 @@ export REQUESTS_CA_BUNDLE="/private/etc/ssl/cert.pem"
 exec "$ACTUAL_PYTHON_BIN" "\$@"
 SH
 
-echo "✅ Wrapper script created at /usr/local/bin/python3"
+echo "✅ SSL-safe Python launcher created."
 
 # ─── STEP 5: MAKE WRAPPER EXECUTABLE ─────────────────────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Making wrapper executable..."
+echo "Enabling the new Python launcher..."
 echo "----------------------------------------"
 
 sudo chmod +x /usr/local/bin/python3
@@ -185,64 +185,61 @@ echo "✅ Wrapper script is now executable."
 # ─── STEP 6: VERIFY WRAPPER IS WORKING ───────────────────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Verifying SSL wrapper..."
+echo "Checking SSL settings..."
 echo "----------------------------------------"
 
 VERIFY_OUTPUT=$(/usr/local/bin/python3 -c "import os,sys; print(sys.executable); print('SSL_CERT_FILE=', os.environ.get('SSL_CERT_FILE'))")
-echo "$VERIFY_OUTPUT"
 
 if echo "$VERIFY_OUTPUT" | grep -q "SSL_CERT_FILE= /private/etc/ssl/cert.pem"; then
-    echo "✅ SSL environment variable is correctly set via wrapper."
+    echo "✅ SSL certificate path is now forced for Python."
 else
-    echo "⚠️  SSL_CERT_FILE not detected in wrapper output. Please verify manually."
+    echo "⚠️ SSL certificate path did not apply as expected. Please verify manually."
 fi
 
 # ─── STEP 7: UPGRADE CERTIFI AND FIX CERTIFICATES ───────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Upgrading certifi and fixing SSL certificates..."
+echo "Updating trusted certificate package..."
 echo "----------------------------------------"
 
 # Ensure pip is available
 if ! /usr/local/bin/python3 -m pip --version &> /dev/null; then
-    echo "pip not found. Installing pip..."
+    echo "Python package manager missing. Adding pip..."
     /usr/local/bin/python3 -m ensurepip --upgrade || true
 fi
 
-echo "Upgrading certifi..."
+echo "Updating certificate bundle..."
 if ! /usr/local/bin/python3 -m pip install --upgrade certifi --break-system-packages --ignore-installed
 then
-    echo "❌ certifi upgrade failed."
-    echo "Reach out to Pubmatic for troubleshooting the issue."
+    echo "❌ Failed to update certificate package."
+    echo "Please reach out to Pubmatic support."
     exit 1
 fi
-echo "✅ certifi upgraded successfully."
+echo "✅ Certificate package updated."
 
 # Run Apple's official certificate installer if available — path matches installed Python version
 CERT_INSTALLER="/Applications/Python ${PYTHON_MINOR}/Install Certificates.command"
 if [ -f "$CERT_INSTALLER" ]; then
-    echo "Running Apple certificate installer for Python ${PYTHON_MINOR}..."
+    echo "Running additional macOS certificate installer for Python ${PYTHON_MINOR}..."
     open "$CERT_INSTALLER"
-    echo "✅ Certificate installer launched."
+    echo "✅ Certificate installer started."
 else
-    echo "ℹ️  Python ${PYTHON_MINOR} certificate installer not found at expected path. Skipping."
+    echo "ℹ️  No extra macOS certificate installer found for Python ${PYTHON_MINOR}."
 fi
 
 # ─── STEP 8: FINAL SSL VERIFICATION ──────────────────────────────────────────
 echo ""
 echo "----------------------------------------"
-echo "Verifying SSL is fully working..."
+echo "Final verification of internet certificate setup..."
 echo "----------------------------------------"
 
 SSL_CHECK=$(/usr/local/bin/python3 -c "import ssl; import certifi; print(certifi.where())" 2>&1)
 
 if echo "$SSL_CHECK" | grep -q ".pem"; then
-    echo "✅ SSL verification passed. Certificate bundle at:"
-    echo "   $SSL_CHECK"
+    echo "✅ SSL setup is working. Python can use trusted certificates."
 else
     echo "❌ SSL verification failed."
-    echo "Output: $SSL_CHECK"
-    echo "Reach out to Pubmatic for troubleshooting the issue."
+    echo "Please share this output with Pubmatic support: $SSL_CHECK"
     exit 1
 fi
 
