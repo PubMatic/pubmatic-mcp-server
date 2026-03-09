@@ -125,8 +125,8 @@ echo "      ✅ Python $CURRENT_VERSION is ready."
 PYTHON_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1-2)
 ACTUAL_PYTHON_BIN=""
 
-# Prefer the versioned binary matching the validated version to avoid following
-# a re-linked default python3 (e.g. Homebrew silently relinking to a newer version).
+# Locate the exact versioned Python binary to use for the SSL wrapper.
+# Priority: python.org install > Homebrew > MacPorts (via /usr/local).
 for candidate in \
     "/Library/Frameworks/Python.framework/Versions/${PYTHON_MINOR}/bin/python${PYTHON_MINOR}" \
     "/opt/homebrew/opt/python@${PYTHON_MINOR}/bin/python${PYTHON_MINOR}" \
@@ -261,7 +261,7 @@ else
 fi
 echo "      ✅ Your device can reach PubMatic servers."
 
-# ─── SECTION 5: MCP SERVER HEALTH CHECK (NO AUTH REQUIRED) ──────────────────
+# ─── SECTION 5: MCP SERVER HEALTH CHECK ──────────────────
 echo ""
 echo "[4/4] Checking PubMatic MCP Server health..."
 log "[4/4] Health check: GET $HEALTH_CHECK_URL"
@@ -339,43 +339,16 @@ else
          "Raw result: $HEALTH_RESULT"
 fi
 
-# ─── FINAL SUMMARY ────────────────────────────────────────────────────────────
+# ─── FINAL RESULT ─────────────────────────────────────────────────────────────
 echo ""
-echo "========================================"
-echo " Summary"
-echo "========================================"
-
-print_status() {
-    local label="$1"
-    local status="$2"
-    case "$status" in
-        pass) echo "  ✅ $label" ;;
-        fail) echo "  ❌ $label" ;;
-        warn) echo "  ⚠️  $label" ;;
-        skip) echo "  —  $label (skipped)" ;;
-        *)    echo "  ?  $label" ;;
-    esac
-}
-
-print_status "Python installation" "$CHECK_PYTHON"
-print_status "SSL certificate setup" "$CHECK_SSL"
-print_status "Network connectivity" "$CHECK_NETWORK"
-print_status "PubMatic MCP Server health" "$CHECK_HEALTH"
-
-echo "========================================"
-
-# Exit with failure if any critical check failed
 if [ "$CHECK_PYTHON" = "fail" ] || [ "$CHECK_SSL" = "fail" ] || \
    [ "$CHECK_NETWORK" = "fail" ] || [ "$CHECK_HEALTH" = "fail" ]; then
-    echo ""
     echo "One or more checks failed."
     echo "Please share the log file below with PubMatic support:"
     echo "  $LOG_FILE"
     exit 1
 else
     log "All checks passed."
-    echo ""
     echo "✅ All checks passed. Claude Desktop is ready to use"
     echo "   the PubMatic MCP Server."
-    echo "========================================"
 fi
