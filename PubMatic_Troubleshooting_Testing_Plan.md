@@ -1,6 +1,6 @@
-# PubMatic Troubleshooting Script — Testing Plan (v2)
+# PubMatic Troubleshooting Script — Testing Plan (v2.1)
 
-This document covers testing for `PubMatic_Troubleshooting.sh` across its 4 checks: network, DNS, SSL, and MCP health. Python, platform detection, and self-upgrade sections have been removed because the `.mcpb` bundle now ships with an embedded Python 3.12.13 runtime.
+This document covers testing for `PubMatic_Troubleshooting.sh` across all its checks: self-upgrade, curl availability, network, DNS, SSL, and MCP health. Python and platform detection sections have been removed because the `.mcpb` bundle now ships with an embedded Python 3.12.13 runtime.
 
 ---
 
@@ -13,6 +13,45 @@ This document covers testing for `PubMatic_Troubleshooting.sh` across its 4 chec
 | E3 | Ubuntu 22.04 | x86_64 | Linux happy path |
 | E4 | Alpine 3.19 (Docker) | x86_64 | Minimal environment — no DNS tools pre-installed |
 | E5 | Any | Any | No internet (airplane mode / firewall) |
+
+---
+
+## Self-Upgrade (`check_upgrade`)
+
+| Test ID | Scenario | How to Simulate | Expected Result | Pass Criteria |
+|---------|----------|-----------------|-----------------|---------------|
+| U.1 | Script is already latest | Set `SCRIPT_VERSION` to match the actual latest GitHub release tag | "Script is up to date (vX.Y.Z)" | `CHECK_UPGRADE="pass"` |
+| U.2 | Newer version exists on GitHub | Set `SCRIPT_VERSION="0.0.1"` in the script | Shows current vs. latest, prompts to update | Prompt text includes both versions |
+| U.3 | GitHub API unreachable | Add `127.0.0.1 api.github.com` to `/etc/hosts` | "(Skipped — could not reach GitHub)" | `CHECK_UPGRADE="skip"`, script continues |
+| U.4 | GitHub response has no `tag_name` | Point `RELEASES_URL` at a repo with zero releases | "(Skipped — could not parse version)" | `CHECK_UPGRADE="skip"`, script continues |
+| U.5 | User declines update | Run without `--yes`, press Enter at prompt | "Skipped update. Continuing with vX.Y.Z" | `CHECK_UPGRADE="pass"`, no files modified |
+| U.6 | `--yes` flag auto-accepts | `bash PubMatic_Troubleshooting.sh --yes` with `SCRIPT_VERSION="0.0.1"` | "(Auto-accepted via --yes flag)", attempts download | No interactive prompt shown |
+
+**Simulation recipe for U.3:**
+```bash
+echo "127.0.0.1 api.github.com" | sudo tee -a /etc/hosts
+bash PubMatic_Troubleshooting.sh
+# Revert:
+sudo sed -i '' '/api.github.com/d' /etc/hosts   # macOS
+sudo sed -i '/api.github.com/d' /etc/hosts        # Linux
+```
+
+---
+
+## Section 0: curl Check (`check_curl`)
+
+| Test ID | Scenario | How to Simulate | Expected Result | Pass Criteria |
+|---------|----------|-----------------|-----------------|---------------|
+| 0.1 | curl is present (normal) | Run on any standard machine | "curl found: /usr/bin/curl" (or similar path) | `CHECK_CURL="pass"`, path displayed |
+| 0.2 | curl is missing | `sudo mv $(which curl) $(which curl).bak` | "curl is required but not found. Please install curl and re-run this script." | Exit code 1, no further checks run |
+
+**Simulation recipe for 0.2:**
+```bash
+sudo mv /usr/bin/curl /usr/bin/curl.bak
+bash PubMatic_Troubleshooting.sh
+# Revert immediately:
+sudo mv /usr/bin/curl.bak /usr/bin/curl
+```
 
 ---
 
@@ -80,17 +119,16 @@ sudo sed -i '/mcp.pubmatic.com/d' /etc/hosts        # Linux
 
 | Test ID | Scenario | How to Simulate | Expected Result | Pass Criteria |
 |---------|----------|-----------------|-----------------|---------------|
-| 3.1 | SSL handshake succeeds (happy path) | Standard setup with valid system certificates | "SSL certificate for mcp.pubmatic.com is valid" | `CHECK_SSL="pass"` |
-| 3.2 | SSL certificate problem (curl exit 60) | `SSL_CERT_FILE=/dev/null bash PubMatic_Troubleshooting.sh` | "SSL certificate verification failed", script exits | `CHECK_SSL="fail"`, exit code 1 |
-| 3.3 | SSL connect error (curl exit 35) | Use iptables/firewall to block port 443 on the target IP | "SSL certificate verification failed", script exits | `CHECK_SSL="fail"`, exit code 1 |
-| 3.4 | Server returns HTTP error (e.g. 401/403), but TLS is valid | Normal — the real endpoint may return a non-2xx if no auth token is sent | SSL check still passes (TLS succeeded) | `CHECK_SSL="pass"` (curl exit 22 is treated as SSL-pass) |
-| 3.5 | Corporate MITM proxy with custom CA | Corporate environment with SSL inspection | Depends on whether system trust store includes corporate CA | If CA is trusted: `CHECK_SSL="pass"`; if not: `CHECK_SSL="fail"` |
+| 3.1 | SSL handshake succeeds (happy path) | Standard setup with valid system certificates | "SSL certificate for mcp.pubmatic.com is valid (verify result: 0, HTTP NNN)" | `CHECK_SSL="pass"` |
+| 3.2 | Server returns HTTP non-2xx but TLS is valid | Normal — the host may return 4xx without auth | SSL check still passes (`ssl_verify_result=0`) | `CHECK_SSL="pass"` — `-f` not used, HTTP errors do not mask TLS success |
+| 3.3 | SSL certificate problem (curl exit 60) | `SSL_CERT_FILE=/dev/null bash PubMatic_Troubleshooting.sh` | "SSL certificate verification failed", script exits | `CHECK_SSL="fail"`, exit code 1 |
+| 3.4 | SSL connect error (curl exit 35) | Block port 443 on the target IP with a firewall rule | "SSL certificate verification failed", script exits | `CHECK_SSL="fail"`, exit code 1 |
+| 3.5 | Inconclusive curl failure (non-TLS, e.g. timeout) | Set very short timeout on a slow network | "SSL check inconclusive" warning | `CHECK_SSL="warn"`, script continues |
+| 3.6 | Corporate MITM proxy with custom CA | Corporate environment with SSL inspection | Depends on whether system trust store includes corporate CA | If CA is trusted: `CHECK_SSL="pass"`; if not: `CHECK_SSL="fail"` |
 
-**Simulation recipe for 3.2 (macOS/Linux — remove system CA trust):**
+**Simulation recipe for 3.3 (macOS/Linux):**
 ```bash
 SSL_CERT_FILE=/dev/null bash PubMatic_Troubleshooting.sh
-# On macOS, if SSL_CERT_FILE is not honoured by the OS keychain, use:
-SSL_CERT_DIR=/dev/null SSL_CERT_FILE=/dev/null bash PubMatic_Troubleshooting.sh
 ```
 
 ---
@@ -144,26 +182,27 @@ sudo sed -i '/apps.pubmatic.com/d' /etc/hosts        # Linux
 
 | Test ID | Scenario | How to Simulate | Expected Result | Pass Criteria |
 |---------|----------|-----------------|-----------------|---------------|
-| X.1 | All 4 checks pass (happy path, end-to-end) | Connected machine with valid certs and reachable server | Summary table shows all "pass" | Exit code 0, all `CHECK_*="pass"` |
-| X.2 | `NO_COLOR` environment variable | `NO_COLOR=1 bash PubMatic_Troubleshooting.sh` | No ANSI escape codes in stdout | Output piped through `cat -v` shows no `\033[` sequences |
-| X.3 | Piped output (non-TTY detection) | `bash PubMatic_Troubleshooting.sh 2>&1 \| cat` | No ANSI escape codes | Same as X.2 |
-| X.4 | Log file is created | Run any scenario, check `/tmp/` after | File `/tmp/pubmatic_troubleshooting_YYYYMMDD_HHMMSS.log` exists | File is non-empty, contains header with date and script version |
-| X.5 | Log file contains all section headers | Run happy path, inspect log | Headers `[1/4]` through `[4/4]` present | `grep -c '^\[' $LOG_FILE` returns >= 4 |
-| X.6 | Mixed statuses in summary | Force one section to warn (e.g., block mcp.pubmatic.com briefly to slow health) | Table shows mix of "pass" and "warn" | Summary matches actual `CHECK_*` values |
-| X.7 | Exit code 1 on any failure | Disconnect network | Script exits 1 | `echo $?` returns 1 |
-| X.8 | Exit code 0 on all-pass | Happy path | Script exits 0 | `echo $?` returns 0 |
-| X.9 | Early abort stops later sections | Disconnect network (section 1 fails) | Sections 2–4 never execute | No `[2/4]` through `[4/4]` in output |
-| X.10 | Bash 3.2 compatibility (macOS default) | `/bin/bash PubMatic_Troubleshooting.sh` on macOS | No syntax errors, clean execution | No bash errors in output or log |
-| X.11 | Bash 5.x compatibility | Run on Linux with bash 5.2 | Clean execution | No syntax errors |
-| X.12 | `curl` missing at startup | `sudo mv $(which curl) $(which curl).bak` | "curl is required but not found", immediate exit | Exit code 1, no sections execute |
+| X.1 | All checks pass (happy path, end-to-end) | Connected machine with valid certs and reachable server | Summary table shows all "pass" | Exit code 0, all `CHECK_*="pass"` |
+| X.2 | `--yes` flag end-to-end | `bash PubMatic_Troubleshooting.sh --yes` when an upgrade is available | No interactive prompt for upgrade | "(Auto-accepted via --yes flag)" in output |
+| X.3 | `NO_COLOR` environment variable | `NO_COLOR=1 bash PubMatic_Troubleshooting.sh` | No ANSI escape codes in stdout | Output piped through `cat -v` shows no `\033[` sequences |
+| X.4 | Piped output (non-TTY detection) | `bash PubMatic_Troubleshooting.sh 2>&1 \| cat` | No ANSI escape codes | Same as X.3 |
+| X.5 | Log file is created | Run any scenario, check `/tmp/` after | File `/tmp/pubmatic_troubleshooting_YYYYMMDD_HHMMSS.log` exists | File is non-empty, contains header with date and script version |
+| X.6 | Log file contains all section headers | Run happy path, inspect log | `[upgrade]`, `[0/4]` through `[4/4]` present | All section markers in log |
+| X.7 | Mixed statuses in summary | Force one section to warn (e.g., slow health) | Table shows mix of "pass" and "warn" | Summary matches actual `CHECK_*` values |
+| X.8 | Exit code 1 on any failure | Disconnect network | Script exits 1 | `echo $?` returns 1 |
+| X.9 | Exit code 0 on all-pass | Happy path | Script exits 0 | `echo $?` returns 0 |
+| X.10 | Early abort stops later sections | Disconnect network (network check fails) | Sections 2–4 never execute | No `[2/4]` through `[4/4]` in output |
+| X.11 | Bash 3.2 compatibility (macOS default) | `/bin/bash PubMatic_Troubleshooting.sh` on macOS | No syntax errors, clean execution | No bash errors in output or log |
+| X.12 | Bash 5.x compatibility | Run on Linux with bash 5.2 | Clean execution | No syntax errors |
+| X.13 | curl missing at startup | `sudo mv $(which curl) $(which curl).bak` | "curl is required but not found", immediate exit | Exit code 1, no sections execute |
 
-**Simulation recipe for X.2:**
+**Simulation recipe for X.3:**
 ```bash
 NO_COLOR=1 bash PubMatic_Troubleshooting.sh 2>&1 | cat -v | grep -c '\^\[\['
 # Expected: 0
 ```
 
-**Simulation recipe for X.10 (macOS bash 3.2):**
+**Simulation recipe for X.11 (macOS bash 3.2):**
 ```bash
 /bin/bash --version   # Confirm 3.2.x
 /bin/bash PubMatic_Troubleshooting.sh
@@ -206,13 +245,9 @@ Some corporate environments inject custom CA certificates and perform SSL inspec
 
 ### 2. `SSL_CERT_FILE` Does Not Override macOS Keychain
 
-On macOS, curl uses the OS keychain for certificate validation rather than `SSL_CERT_FILE`. Setting `SSL_CERT_FILE=/dev/null` may not reliably force an SSL failure on macOS for test 3.2. Use an outbound firewall rule or a non-routable IP to reliably block port 443 for SSL failure testing.
+On macOS, curl uses the OS keychain for certificate validation rather than `SSL_CERT_FILE`. Setting `SSL_CERT_FILE=/dev/null` may not reliably force an SSL failure on macOS for test 3.3. Use an outbound firewall rule or a non-routable IP to reliably block port 443 for SSL failure testing.
 
-### 3. `sort -V` Availability
-
-Version comparison (not used in the current 4-check script) was the only place `sort -V` appeared. With the removal of the Python version check, `sort -V` is no longer used. No compatibility concern.
-
-### 4. Bash 3.2 Compatibility
+### 3. Bash 3.2 Compatibility
 
 All bash features in this script are validated against bash 3.2 (the version shipped with macOS). Features to avoid:
 
@@ -223,6 +258,10 @@ All bash features in this script are validated against bash 3.2 (the version shi
 | `readarray` / `mapfile` | bash 4.0+ | Not used |
 | `${var,,}` lowercase | bash 4.0+ | `awk tolower` if needed |
 
+### 4. Self-Upgrade Re-exec on Read-Only Filesystems
+
+`check_upgrade` copies the new script over `$0`. If the script is run from a read-only location (e.g., mounted network share), the `cp` step will fail silently — the script continues with the current version. This is acceptable behaviour.
+
 ---
 
 ## Test Execution Checklist
@@ -231,6 +270,18 @@ All bash features in this script are validated against bash 3.2 (the version shi
 Environment: _______________
 Date:        _______________
 Tester:      _______________
+
+Self-Upgrade
+  [ ] U.1  Up to date
+  [ ] U.2  Newer version exists
+  [ ] U.3  GitHub unreachable
+  [ ] U.4  No tag_name in response
+  [ ] U.5  User declines update
+  [ ] U.6  --yes auto-accepts
+
+Section 0 — curl
+  [ ] 0.1  curl present (path displayed)
+  [ ] 0.2  curl missing (clean exit)
 
 Section 1 — Network
   [ ] 1.1  Normal connectivity
@@ -247,11 +298,12 @@ Section 2 — DNS
   [ ] 2.6  VPN blocking
 
 Section 3 — SSL
-  [ ] 3.1  SSL passes (happy path)
-  [ ] 3.2  SSL cert problem (curl exit 60)
-  [ ] 3.3  SSL connect error (curl exit 35)
-  [ ] 3.4  HTTP error but TLS valid (curl exit 22)
-  [ ] 3.5  Corporate MITM proxy
+  [ ] 3.1  SSL passes (happy path, verify result: 0)
+  [ ] 3.2  HTTP non-2xx but TLS valid (still passes)
+  [ ] 3.3  SSL cert problem (curl exit 60)
+  [ ] 3.4  SSL connect error (curl exit 35)
+  [ ] 3.5  Inconclusive failure (warn, not fail)
+  [ ] 3.6  Corporate MITM proxy
 
 Section 4 — MCP Health
   [ ] 4.1  HTTP 200, fast
@@ -263,15 +315,16 @@ Section 4 — MCP Health
 
 Cross-Cutting
   [ ] X.1   All pass (happy path)
-  [ ] X.2   NO_COLOR
-  [ ] X.3   Piped output (non-TTY)
-  [ ] X.4   Log file created
-  [ ] X.5   Log file contents
-  [ ] X.6   Mixed status summary
-  [ ] X.7   Exit code 1 on failure
-  [ ] X.8   Exit code 0 on success
-  [ ] X.9   Early abort
-  [ ] X.10  Bash 3.2 compat (macOS)
-  [ ] X.11  Bash 5.x compat (Linux)
-  [ ] X.12  curl missing at startup
+  [ ] X.2   --yes flag for upgrade
+  [ ] X.3   NO_COLOR
+  [ ] X.4   Piped output (non-TTY)
+  [ ] X.5   Log file created
+  [ ] X.6   Log file section headers
+  [ ] X.7   Mixed status summary
+  [ ] X.8   Exit code 1 on failure
+  [ ] X.9   Exit code 0 on success
+  [ ] X.10  Early abort
+  [ ] X.11  Bash 3.2 compat (macOS)
+  [ ] X.12  Bash 5.x compat (Linux)
+  [ ] X.13  curl missing at startup
 ```

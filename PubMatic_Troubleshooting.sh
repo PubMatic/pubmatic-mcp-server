@@ -1,14 +1,15 @@
 #!/bin/bash
 # PubMatic MCP Server — Troubleshooting Script
-# Runs 4 ordered checks: network, DNS, SSL, MCP health.
+# Runs 5 checks: self-upgrade, curl, network, DNS, SSL, MCP health.
 # Hard dependencies: bash (v3.2+), curl.
 
-SCRIPT_VERSION="2.0.0"
+SCRIPT_VERSION="2.1.0"
 
 # ─── CONSTANTS ─────────────────────────────────────────────────────────────────
 MCP_HOST="mcp.pubmatic.com"
 HEALTH_CHECK_URL="https://apps.pubmatic.com/mcpserver/health"
 HEALTH_RESPONSE_THRESHOLD=5
+RELEASES_URL="https://api.github.com/repos/PubMatic/pubmatic-mcp-server/releases/latest"
 
 # ─── LOGGING SETUP ─────────────────────────────────────────────────────────────
 LOG_FILE="/tmp/pubmatic_troubleshooting_$(date +%Y%m%d_%H%M%S).log"
@@ -25,7 +26,17 @@ green()  { printf "${CLR_GREEN}%s${CLR_RESET}" "$1"; }
 red()    { printf "${CLR_RED}%s${CLR_RESET}" "$1"; }
 yellow() { printf "${CLR_YELLOW}%s${CLR_RESET}" "$1"; }
 
+# ─── ARGUMENT PARSING ──────────────────────────────────────────────────────────
+AUTO_YES=false
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y) AUTO_YES=true ;;
+    esac
+done
+
 # ─── STATUS TRACKING ──────────────────────────────────────────────────────────
+CHECK_UPGRADE="pending"
+CHECK_CURL="pending"
 CHECK_NETWORK="pending"
 CHECK_DNS="pending"
 CHECK_SSL="pending"
@@ -56,6 +67,22 @@ pass_msg() {
     log "PASS: $1"
 }
 
+confirm_prompt() {
+    local prompt_text="$1"
+    if [ "$AUTO_YES" = true ]; then
+        echo "  (Auto-accepted via --yes flag)"
+        log "Auto-accepted prompt: $prompt_text"
+        return 0
+    fi
+    printf "  %s [y/N] (default: No): " "$prompt_text"
+    local answer
+    read -r answer
+    case "$answer" in
+        [yY]|[yY][eE][sS]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # ─── STARTUP ───────────────────────────────────────────────────────────────────
 echo ""
 echo "=========================================="
@@ -68,15 +95,95 @@ log " $(date)"
 log " Script version: ${SCRIPT_VERSION}"
 log "=========================================="
 
-if ! has_cmd curl; then
-    echo -e "  $(red '✘') curl is required but not found. Please install curl and re-run this script."
-    exit 1
-fi
+###############################################################################
+# SELF-UPGRADE CHECK
+###############################################################################
+check_upgrade() {
+    echo "[upgrade] Checking for script updates..."
+    log "[upgrade] Self-upgrade check"
+
+    local latest_raw latest
+    latest_raw=$(curl -fsSL --max-time 10 "$RELEASES_URL" 2>/dev/null) || {
+        log "Could not reach GitHub releases API. Skipping upgrade check."
+        echo "         (Skipped — could not reach GitHub)"
+        CHECK_UPGRADE="skip"
+        return
+    }
+
+    latest=$(echo "$latest_raw" | grep '"tag_name"' | sed 's/.*"v\?\([^"]*\)".*/\1/')
+    if [ -z "$latest" ]; then
+        log "Could not parse latest version from GitHub response."
+        CHECK_UPGRADE="skip"
+        echo "         (Skipped — could not parse version)"
+        return
+    fi
+
+    log "Current version: ${SCRIPT_VERSION}, Latest version: ${latest}"
+
+    local newer
+    newer=$(printf '%s\n' "$SCRIPT_VERSION" "$latest" | sort -V | tail -n1)
+    if [ "$newer" = "$SCRIPT_VERSION" ] || [ "$latest" = "$SCRIPT_VERSION" ]; then
+        pass_msg "Script is up to date (v${SCRIPT_VERSION})."
+        CHECK_UPGRADE="pass"
+        return
+    fi
+
+    echo "         New version available: v${latest} (current: v${SCRIPT_VERSION})"
+
+    local download_url
+    download_url=$(echo "$latest_raw" | grep '"browser_download_url"' | grep -i 'troubleshooting' | sed 's/.*"\(https[^"]*\)".*/\1/' | head -1)
+    if [ -z "$download_url" ]; then
+        warn_msg "Could not find download URL for the new version. Please update manually."
+        CHECK_UPGRADE="skip"
+        return
+    fi
+
+    if confirm_prompt "Download and apply update to v${latest}?"; then
+        local tmp_script="/tmp/pubmatic_troubleshooting_update.sh"
+        if curl -fsSL --max-time 30 "$download_url" -o "$tmp_script" 2>/dev/null; then
+            cp "$tmp_script" "$0"
+            chmod +x "$0"
+            rm -f "$tmp_script"
+            log "Updated to v${latest}. Re-executing."
+            echo "         Updated to v${latest}. Restarting..."
+            exec "$0" "$@"
+        else
+            warn_msg "Download failed. Continuing with current version."
+            CHECK_UPGRADE="skip"
+        fi
+    else
+        echo "         Skipped update. Continuing with v${SCRIPT_VERSION}."
+        CHECK_UPGRADE="pass"
+    fi
+}
+
+###############################################################################
+# 0. CURL AVAILABILITY CHECK
+###############################################################################
+check_curl() {
+    echo "[0/4] Checking for curl..."
+    log "[0/4] curl availability check"
+
+    local curl_path
+    curl_path=$(command -v curl 2>/dev/null)
+    if [ -z "$curl_path" ]; then
+        CHECK_CURL="fail"
+        echo -e "  $(red '✘') curl is required but not found."
+        echo "     Please install curl and re-run this script."
+        log "FAILURE: curl not found"
+        exit 1
+    fi
+
+    CHECK_CURL="pass"
+    pass_msg "curl found: ${curl_path}"
+    log "curl path: ${curl_path}"
+}
 
 ###############################################################################
 # 1. NETWORK CHECK
 ###############################################################################
 check_network() {
+    echo ""
     echo "[1/4] Checking network connectivity..."
     log "[1/4] Network connectivity check"
 
@@ -100,7 +207,7 @@ check_network() {
 resolve_dns() {
     local host="$1"
     if has_cmd host; then
-        host "$host" 2>/dev/null | grep "has address"
+        host "$host" 2>/dev/null | grep -E "has address|has IPv6 address"
         return $?
     elif has_cmd nslookup; then
         nslookup "$host" 2>/dev/null | grep -A1 "Name:" | grep "Address"
@@ -150,41 +257,48 @@ check_ssl() {
     echo "[3/4] Checking SSL certificate for ${MCP_HOST}..."
     log "[3/4] SSL check via curl for ${MCP_HOST}"
 
-    local ssl_output
-    ssl_output=$(curl -fsS --max-time 10 -o /dev/null \
+    # Do NOT use -f: HTTP errors (401, 403, 404) are acceptable here — we only
+    # care that the TLS handshake succeeded. ssl_verify_result == 0 is the
+    # authoritative signal; exit-code logic is kept as a belt-and-suspenders
+    # guard for connection-level failures.
+    local ssl_output curl_exit
+    ssl_output=$(curl -sS --max-time 10 -o /dev/null \
         --write-out "%{ssl_verify_result}:%{http_code}" \
         "https://${MCP_HOST}" 2>/tmp/pubmatic_ssl_err.txt)
-    local curl_exit=$?
+    curl_exit=$?
 
-    local ssl_verify_result="${ssl_output%%:*}"
+    local ssl_verify_result http_code_ssl
+    ssl_verify_result="${ssl_output%%:*}"
+    http_code_ssl="${ssl_output#*:}"
 
-    log "curl exit code: ${curl_exit}, ssl_verify_result: ${ssl_verify_result}"
+    log "SSL curl exit: ${curl_exit}, ssl_verify_result: ${ssl_verify_result}, http_code: ${http_code_ssl}"
 
-    # curl exit code 60 = SSL certificate problem
-    # exit code 35 = SSL connect error
-    # ssl_verify_result 0 = OK
-    if [ $curl_exit -eq 60 ] || [ $curl_exit -eq 35 ]; then
-        local ssl_err
-        ssl_err=$(cat /tmp/pubmatic_ssl_err.txt 2>/dev/null)
-        log "SSL error detail: ${ssl_err}"
-        CHECK_SSL="fail"
-        fail "SSL certificate verification failed for ${MCP_HOST}." \
-             "curl SSL error (exit ${curl_exit}): ${ssl_err}"
-    elif [ $curl_exit -ne 0 ] && [ $curl_exit -ne 22 ]; then
-        # exit 22 = HTTP error (server responded, SSL was fine — acceptable here)
-        local ssl_err
-        ssl_err=$(cat /tmp/pubmatic_ssl_err.txt 2>/dev/null)
-        log "curl failed with exit ${curl_exit}: ${ssl_err}"
-        # Only warn if it could be SSL-related; network/DNS would have already failed
-        warn_msg "curl returned exit code ${curl_exit} during SSL check. SSL status uncertain."
-        CHECK_SSL="warn"
+    # ssl_verify_result 0 = certificate chain trusted — this is the definitive pass
+    if [ "$ssl_verify_result" = "0" ]; then
         rm -f /tmp/pubmatic_ssl_err.txt
+        CHECK_SSL="pass"
+        pass_msg "SSL certificate for ${MCP_HOST} is valid (verify result: 0, HTTP ${http_code_ssl})."
         return
     fi
 
+    # Explicit TLS-layer errors
+    if [ $curl_exit -eq 60 ] || [ $curl_exit -eq 35 ]; then
+        local ssl_err
+        ssl_err=$(cat /tmp/pubmatic_ssl_err.txt 2>/dev/null)
+        rm -f /tmp/pubmatic_ssl_err.txt
+        log "SSL error detail: ${ssl_err}"
+        CHECK_SSL="fail"
+        fail "SSL certificate verification failed for ${MCP_HOST}." \
+             "curl SSL error (exit ${curl_exit}, verify_result ${ssl_verify_result}): ${ssl_err}"
+    fi
+
+    # Any other curl failure (timeout, connection refused, etc.)
+    local ssl_err
+    ssl_err=$(cat /tmp/pubmatic_ssl_err.txt 2>/dev/null)
     rm -f /tmp/pubmatic_ssl_err.txt
-    CHECK_SSL="pass"
-    pass_msg "SSL certificate for ${MCP_HOST} is valid."
+    log "curl non-SSL failure (exit ${curl_exit}): ${ssl_err}"
+    warn_msg "SSL check inconclusive: curl exited ${curl_exit} (ssl_verify_result: ${ssl_verify_result})."
+    CHECK_SSL="warn"
 }
 
 ###############################################################################
@@ -228,12 +342,8 @@ check_health() {
         rm -f "$body_file"
     fi
 
-    # Pure-bash float comparison: multiply to integer (strips decimals)
-    local rt_int
-    rt_int=$(echo "$response_time" | awk -v t="$HEALTH_RESPONSE_THRESHOLD" \
-        'BEGIN{} {if ($1+0 > t+0) print "slow"; else print "ok"}')
-
-    if [ "$rt_int" = "slow" ]; then
+    # Float comparison via awk (bash cannot compare floats)
+    if awk "BEGIN {exit !($response_time > $HEALTH_RESPONSE_THRESHOLD)}"; then
         CHECK_HEALTH="warn"
         warn_msg "MCP Server is reachable but slow (${response_time}s > ${HEALTH_RESPONSE_THRESHOLD}s threshold)."
     else
@@ -259,6 +369,8 @@ print_summary() {
     echo "=========================================="
     echo " PubMatic MCP Server — Sanity Check Summary"
     echo "=========================================="
+    printf " %-26s %s\n" "Self-Upgrade"  "$(status_for "$CHECK_UPGRADE")"
+    printf " [0/4] %-20s %s\n" "curl"       "$(status_for "$CHECK_CURL")"
     printf " [1/4] %-20s %s\n" "Network"    "$(status_for "$CHECK_NETWORK")"
     printf " [2/4] %-20s %s\n" "DNS"        "$(status_for "$CHECK_DNS")"
     printf " [3/4] %-20s %s\n" "SSL"        "$(status_for "$CHECK_SSL")"
@@ -288,6 +400,8 @@ print_summary() {
 ###############################################################################
 # MAIN EXECUTION
 ###############################################################################
+check_upgrade
+check_curl
 check_network
 check_dns
 check_ssl
