@@ -343,7 +343,27 @@ detect_platform() {
 ###############################################################################
 # 5. PYTHON CHECK AND INSTALL
 ###############################################################################
+INSTALLED_PYTHON_BIN=""
+
 find_python() {
+    # After an install, prefer the known installed binary path over generic PATH
+    # resolution. This handles the case where Homebrew's python3 (e.g. 3.14)
+    # shadows /usr/local/bin/python3 (which we just symlinked to 3.12).
+    if [ -n "$INSTALLED_PYTHON_BIN" ] && [ -x "$INSTALLED_PYTHON_BIN" ]; then
+        PYTHON_CMD="$INSTALLED_PYTHON_BIN"
+        return
+    fi
+    # Also check /usr/local/bin/python3 explicitly — on macOS, /opt/homebrew/bin
+    # comes before /usr/local/bin in PATH, so `command -v python3` may find the
+    # wrong one even after we symlinked our install there.
+    if [ -x /usr/local/bin/python3 ]; then
+        local usrlocal_ver
+        usrlocal_ver=$(/usr/local/bin/python3 --version 2>&1 | awk '{print $2}')
+        if version_in_range "$usrlocal_ver" "$MIN_VERSION" "$MAX_VERSION"; then
+            PYTHON_CMD="/usr/local/bin/python3"
+            return
+        fi
+    fi
     if has_cmd python3; then
         PYTHON_CMD="python3"
     elif has_cmd python; then
@@ -360,15 +380,16 @@ build_python_install_steps() {
     if [ "$DETECTED_OS" = "Darwin" ]; then
         local pkg_file="python-${PYTHON_PKG_VERSION}-macos11.pkg"
         local pkg_url="https://www.python.org/ftp/python/${PYTHON_PKG_VERSION}/${pkg_file}"
-        local installed_bin="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12"
+        INSTALLED_PYTHON_BIN="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12"
         INSTALL_STEPS+=(
             "curl -fsSL ${pkg_url} -o /tmp/${pkg_file}|Download Python ${PYTHON_PKG_VERSION} installer from python.org"
             "sudo installer -pkg /tmp/${pkg_file} -target /|Install Python ${PYTHON_PKG_VERSION} system-wide (requires admin password)"
-            "sudo ln -sf ${installed_bin} /usr/local/bin/python3|Symlink python3 so the MCP manifest can find it"
+            "sudo ln -sf ${INSTALLED_PYTHON_BIN} /usr/local/bin/python3|Symlink python3 so the MCP manifest can find it"
             "rm -f /tmp/${pkg_file}|Clean up downloaded installer"
         )
     elif [ "$DETECTED_OS" = "Linux" ]; then
         if has_cmd apt-get; then
+            INSTALLED_PYTHON_BIN="/usr/bin/python3.12"
             INSTALL_STEPS+=(
                 "sudo apt-get update|Refresh package lists"
                 "sudo apt-get install -y software-properties-common|Install prerequisite for adding PPAs"
@@ -378,6 +399,7 @@ build_python_install_steps() {
                 "sudo ln -sf /usr/bin/python3.12 /usr/local/bin/python3|Symlink python3 if needed"
             )
         elif has_cmd dnf; then
+            INSTALLED_PYTHON_BIN="/usr/bin/python3.12"
             INSTALL_STEPS+=("sudo dnf install -y python3.12|Install Python 3.12 via dnf")
         elif has_cmd yum; then
             INSTALL_STEPS+=("sudo yum install -y python3|Install Python 3 via yum")

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Completely restructure `PubMatic_Troubleshooting.sh` into a modular, ordered pipeline with 7 sections: self-upgrade, network check, DNS check, OS/arch detection, Python validation with optional install, SSL/certificate setup, and MCP health check. Cross-platform support for macOS and Linux. Windows is out of scope (separate script).
+Completely restructure `PubMatic_Troubleshooting.sh` into a modular, ordered pipeline with 8 sections: self-upgrade, network check, DNS check, OS/arch detection, Python validation with optional install, SSL/certificate setup, MCP health check, and manifest alignment verification. Cross-platform support for macOS and Linux. Windows is out of scope (separate script).
 
 ---
 
@@ -56,6 +56,7 @@ flowchart TD
   D --> E["5. Python Check and Install"]
   E --> F["6. SSL/Certificate Setup"]
   F --> G["7. MCP Health Check"]
+  G --> H["8. Manifest Alignment Check"]
 ```
 
 ---
@@ -504,6 +505,33 @@ If Python is somehow still broken at this point, we still have the HTTP status c
   - Over threshold: `warn` (reachable but slow)
 - Status: `pass`, `warn`, or `fail`
 
+### 8. Manifest Alignment Check (`check_manifest_alignment`)
+
+**Dependencies used:** The `python3` that Claude Desktop will actually resolve (not the terminal's `python3`)
+
+**Why this section exists:** The `manifest.json` uses `"command": "python3"`. Claude Desktop is a GUI application and resolves `python3` via a **different PATH** than the user's terminal:
+
+| Context | PATH includes | `python3` resolves to |
+|---------|--------------|----------------------|
+| User terminal (with Homebrew) | `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` | `/opt/homebrew/bin/python3` (e.g. 3.14) |
+| Claude Desktop (macOS GUI app) | `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/local/bin` | `/usr/bin/python3` (Apple system, e.g. 3.9.6) or `/usr/local/bin/python3` |
+| Linux GUI app | System PATH | Usually `/usr/bin/python3` |
+
+Without this check, the script could validate Homebrew's Python 3.14 (which is what the terminal sees), while Claude Desktop actually uses Apple's system Python 3.9.6 -- and if that one has broken SSL or is missing, the extension silently fails.
+
+**What it checks:**
+
+1. **Resolve the GUI python3** -- simulate the GUI app's PATH (`/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin` on macOS) and find which `python3` Claude Desktop will use
+2. **Version check** -- verify the GUI python3 is within the supported range (3.8--3.13.x)
+3. **Import check** -- verify all stdlib modules `mcp_bridge.py` uses (`sys`, `json`, `ssl`, `io`, `argparse`, `urllib.request`, `urllib.error`, `typing`) can be imported
+4. **SSL handshake** -- verify the GUI python3 can complete a TLS handshake to `mcp.pubmatic.com:443` (the exact connection `mcp_bridge.py` will make)
+
+**Key insight:** `mcp_bridge.py` uses **only stdlib modules** -- no third-party packages. This means `pip`, `certifi`, and other third-party tools are only needed for the troubleshooting script's own SSL certificate fix (section 6), not for the bridge itself. The bridge relies on `ssl.create_default_context()` which uses the OS-level certificate store.
+
+- If GUI python3 exists and passes all checks: `pass`
+- If GUI python3 works but version is outside range: `warn` (may still work since bridge is pure stdlib)
+- If GUI python3 is missing or cannot import/connect: `fail`
+
 ---
 
 ## Final Summary Output
@@ -514,13 +542,14 @@ After all sections complete, print a summary table:
 ==========================================
  PubMatic MCP Server - Sanity Check Summary
 ==========================================
- [1/7] Self-Upgrade      pass
- [2/7] Network            pass
- [3/7] DNS                pass
- [4/7] Platform           pass  (macOS arm64)
- [5/7] Python             pass  (3.12.9)
- [6/7] SSL Certificates   pass
- [7/7] MCP Health         pass  (0.342s)
+ [1/8] Self-Upgrade      pass
+ [2/8] Network            pass
+ [3/8] DNS                pass
+ [4/8] Platform           pass  (macOS arm64)
+ [5/8] Python             pass  (3.12.9)
+ [6/8] SSL Certificates   pass
+ [7/8] MCP Health         pass  (0.342s)
+ [8/8] Manifest Alignment pass  (3.9.6 @ /usr/bin/python3)
 ==========================================
 
  Log file: /tmp/pubmatic_troubleshooting_20260312_143022.log
@@ -545,3 +574,67 @@ Any `fail` results in a non-zero exit code and a prompt to share the log file wi
 - **Cross-platform** -- macOS and Linux handled via `DETECTED_OS`/`DETECTED_ARCH`/`DETECTED_DISTRO`; Windows is a separate script
 - **`--break-system-packages` only when needed** -- detects PEP 668 before using the flag, not applied blindly
 - **`--yes` flag for automation** -- skips all prompts for CI/unattended use, but still prints the step list for auditability
+- **Manifest alignment verification** -- section 8 simulates the GUI app's PATH to verify the exact `python3` Claude Desktop will invoke, catching the "different python3" problem where the terminal sees one Python but the GUI app uses another
+- **`mcp_bridge.py` is pure stdlib** -- the bridge uses zero third-party packages (`sys`, `json`, `ssl`, `io`, `argparse`, `urllib`, `typing`), so the script does not need to install any pip packages for the bridge to work; `certifi` and pip are only needed for the troubleshooting script's own SSL fix
+
+---
+
+## Implementation Notes / Discovered Constraints
+
+### Bash 3.2 Compatibility: No Namerefs (`local -n`)
+
+**Problem:** The original design for `display_and_run_steps()` used `local -n steps_ref=$1` to pass arrays by reference (a bash nameref). macOS ships `/bin/bash` v3.2, which does **not** support namerefs -- they were introduced in bash 4.3. Running the script on macOS produced:
+
+```
+PubMatic_Troubleshooting.sh: line 112: local: -n: invalid option
+```
+
+**Resolution:** Replaced with indirect expansion, which works on bash 3.2+:
+
+```bash
+# WRONG (bash 4.3+ only):
+display_and_run_steps() {
+    local -n steps_ref=$1
+    ...
+    for entry in "${steps_ref[@]}"; do
+    ...
+}
+
+# CORRECT (bash 3.2+ compatible):
+display_and_run_steps() {
+    local steps_var="$1[@]"
+    local steps=("${!steps_var}")
+    ...
+    for entry in "${steps[@]}"; do
+    ...
+}
+```
+
+**General rule:** All bash features used in this script must be validated against bash 3.2, since that is the version shipped with macOS (Apple does not update it due to GPLv3 licensing). Features to avoid:
+
+| Feature | Requires | Alternative |
+|---------|----------|-------------|
+| `local -n` (namerefs) | bash 4.3+ | Indirect expansion `${!var}` |
+| Associative arrays `declare -A` | bash 4.0+ | Indexed arrays with `key|value` strings |
+| `readarray` / `mapfile` | bash 4.0+ | `while read` loop |
+| `${var,,}` lowercase | bash 4.0+ | `tr '[:upper:]' '[:lower:]'` or `awk '{print tolower($0)}'` |
+| `|&` (pipe stderr) | bash 4.0+ | `2>&1 |` |
+| `coproc` | bash 4.0+ | Named pipes or temp files |
+
+### Homebrew PATH Precedence on macOS: Post-Install Verification Fails
+
+**Problem:** After installing Python 3.12.9 from python.org and symlinking it to `/usr/local/bin/python3`, the post-install verification still found Python 3.14.3 (Homebrew). This is because on macOS with Homebrew, `/opt/homebrew/bin` appears **before** `/usr/local/bin` in PATH:
+
+```
+PATH=...:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:...
+```
+
+So `command -v python3` resolves to `/opt/homebrew/bin/python3` (3.14) even though `/usr/local/bin/python3` correctly points to 3.12.9.
+
+**Resolution:** The `find_python()` function now uses a three-tier resolution strategy after install:
+
+1. **Known installed binary path** -- After `build_python_install_steps()` runs, it stores the expected installed binary path in `INSTALLED_PYTHON_BIN` (e.g., `/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12` on macOS). `find_python()` checks this path first.
+2. **Explicit `/usr/local/bin/python3` check** -- If the known path isn't set, explicitly test `/usr/local/bin/python3` and check if its version is in range, bypassing PATH ordering.
+3. **Generic `command -v` fallback** -- Only if neither of the above succeeds, fall back to PATH-based resolution.
+
+**General rule:** After installing a binary and symlinking it, always verify using the absolute path rather than relying on `command -v`, because PATH ordering is not under the script's control.
