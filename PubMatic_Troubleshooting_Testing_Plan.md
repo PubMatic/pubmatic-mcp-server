@@ -1,6 +1,6 @@
 # PubMatic Troubleshooting Script -- Testing Plan
 
-This document covers comprehensive testing for `PubMatic_Troubleshooting.sh` across all 7 sections, including environment matrices, per-section test cases, cross-cutting integration tests, Docker commands, and failure simulation recipes.
+This document covers comprehensive testing for `PubMatic_Troubleshooting.sh` across all 7 sections (including GUI-PATH manifest alignment checks folded into sections 5 and 6), environment matrices, per-section test cases, cross-cutting integration tests, Docker commands, and failure simulation recipes.
 
 ---
 
@@ -136,6 +136,22 @@ docker run --rm -v "$(pwd)":/app rockylinux:9 bash -c "yum install -y curl && ba
 | 5.13 | No supported package manager | Minimal Docker with package manager removed | "No supported package manager found" | `CHECK_PYTHON="fail"`, prints manual install URL |
 | 5.14 | Post-install verification succeeds | After a successful install run | Re-checks `python3 --version`, reports installed version | `CHECK_PYTHON="pass"`, version in range |
 | 5.15 | Homebrew python3 shadows installed 3.12 | macOS with Homebrew Python 3.14+ in `/opt/homebrew/bin`, install 3.12 to `/usr/local/bin` | Post-install finds 3.12.9 via direct path, not Homebrew's 3.14 | `CHECK_PYTHON="pass"`, `PYTHON_CMD` points to 3.12 binary |
+| 5.16 | GUI python3 exists and is in range (manifest alignment) | macOS with `/usr/bin/python3` (Apple 3.9.6) | "Claude Desktop will use /usr/bin/python3 (3.9.6)" shown after Python pass | Output includes Claude Desktop python3 info |
+| 5.17 | GUI python3 differs from terminal python3 | macOS with Homebrew 3.14 in terminal, Apple 3.9.6 for GUI | Summary line shows "3.12.9, Claude Desktop: 3.9.6" | Both versions displayed in summary |
+| 5.18 | GUI python3 stdlib import fails | System with corrupted Python stdlib for GUI python3 | "cannot import required modules" warning | `warn_msg` printed, script continues |
+| 5.19 | GUI python3 not found in GUI PATH | Docker where python3 is only in non-standard PATH | "Claude Desktop may not find python3" warning | `warn_msg` printed, script continues |
+| 5.20 | Linux: GUI python3 same as terminal python3 | Standard Linux (no Homebrew PATH divergence) | No extra GUI python3 message (same binary) | Log shows "no divergence" |
+
+**Simulation recipe for 5.16/5.17 (demonstrate GUI-PATH divergence):**
+```bash
+# Default on macOS with Homebrew Python 3.14+
+# Terminal python3 = /opt/homebrew/bin/python3 (3.14.x)
+# GUI python3 = /usr/bin/python3 (3.9.6, Apple system)
+# Script PYTHON_CMD = /usr/local/bin/python3 (3.12.9)
+bash PubMatic_Troubleshooting.sh
+# Check: section 5 output shows Claude Desktop python3 info
+# Check: summary line shows both versions
+```
 
 **Simulation recipe for 5.4 (Python out of range, macOS):**
 ```bash
@@ -176,6 +192,21 @@ docker run --rm -v "$(pwd)":/app ubuntu:22.04 bash -c "
 | 6.7 | PEP 668 detection (EXTERNALLY-MANAGED) | Ubuntu 24.04 or Debian 12+ where EXTERNALLY-MANAGED file exists | `--break-system-packages` flag included in certifi install command | Flag visible in step display |
 | 6.8 | Fix applied but SSL still fails | Corrupt cert store beyond what certifi can fix (e.g., corporate MITM proxy) | "SSL fix was applied but handshake still fails" | `CHECK_SSL="warn"`, script continues |
 | 6.9 | `--yes` flag auto-accepts SSL fix | Run with `--yes` on system with SSL failure | "(Auto-accepted via --yes flag)", executes fix steps | No prompt displayed |
+| 6.10 | GUI python3 SSL also checked (manifest alignment) | macOS where GUI python3 differs from PYTHON_CMD | Log shows "GUI python3 SSL handshake to mcp.pubmatic.com also OK" | Both SSL checks pass |
+| 6.11 | GUI python3 SSL fails while terminal python3 passes | Corrupt cert store for system Python only | "Claude Desktop's python3 fails SSL to mcp.pubmatic.com" | `CHECK_SSL="warn"`, script continues |
+| 6.12 | GUI python3 same as PYTHON_CMD (skip duplicate check) | Linux or macOS where both resolve to the same binary | No duplicate GUI SSL check in log | Log shows no "GUI python3" SSL entry |
+
+**Simulation recipe for 6.11 (GUI python3 SSL failure):**
+```bash
+# On macOS, corrupt the system Python's certificate path
+SSL_CERT_FILE=/tmp/nonexistent.pem /usr/bin/python3 -c "
+import ssl, socket
+ctx = ssl.create_default_context()
+with ctx.wrap_socket(socket.socket(), server_hostname='mcp.pubmatic.com') as s:
+    s.connect(('mcp.pubmatic.com', 443))
+" 2>&1
+# If this fails, the script will detect the GUI python3 SSL failure
+```
 
 **Simulation recipe for 6.2 (force SSL failure on macOS):**
 ```bash
@@ -245,6 +276,17 @@ sudo sed -i '/apps.pubmatic.com/d' /etc/hosts      # Linux
 
 ---
 
+## GUI-PATH Manifest Alignment (Folded into Sections 5 & 6)
+
+> **Note:** The GUI-PATH manifest alignment check was originally tracked as a standalone manifest-alignment block, but it has been folded into sections 5 (Python version + stdlib imports) and 6 (SSL handshake). The corresponding test cases are now:
+>
+> - **Section 5:** Tests 5.16–5.20 cover GUI python3 resolution, version checks, stdlib imports, and the divergence scenario
+> - **Section 6:** Tests 6.10–6.12 cover GUI python3 SSL handshake verification
+>
+> See those sections above for full test details and simulation recipes.
+
+---
+
 ## Cross-Cutting / Integration Tests
 
 | Test ID | Scenario | How to Simulate | Expected Result | Pass Criteria |
@@ -254,7 +296,7 @@ sudo sed -i '/apps.pubmatic.com/d' /etc/hosts      # Linux
 | X.3 | `NO_COLOR` environment variable | `NO_COLOR=1 bash PubMatic_Troubleshooting.sh` | No ANSI escape codes in stdout | Output piped through `cat -v` shows no `\033[` sequences |
 | X.4 | Piped output (non-TTY detection) | `bash PubMatic_Troubleshooting.sh 2>&1 \| cat` | No ANSI escape codes (script detects non-TTY via `[ ! -t 1 ]`) | Same as X.3 |
 | X.5 | Log file is created | Run any scenario, check `/tmp/` after | File `/tmp/pubmatic_troubleshooting_YYYYMMDD_HHMMSS.log` exists | File is non-empty, contains header with date and script version |
-| X.6 | Log file contains all section details | Run happy path, inspect log file | All 7 section headers present (`[1/7]` through `[7/7]`), PASS/WARN/FAIL entries | `grep -c '^\[' $LOG_FILE` returns >= 7 |
+| X.6 | Log file contains all section details | Run happy path, inspect log file | All 7 section headers present (`[1/7]` through `[7/7]`), plus GUI python3 entries | `grep -c '^\[' $LOG_FILE` returns >= 7 |
 | X.7 | Summary table shows correct mixed statuses | Force one section to warn (e.g., SSL skip) and others to pass | Table shows "pass" for most, "warn" for SSL | Summary output matches actual `CHECK_*` values |
 | X.8 | Exit code 1 on any failure | Force network failure (disconnect) | Script exits 1 | `echo $?` returns 1 |
 | X.9 | Exit code 0 on all-pass | Happy path | Script exits 0 | `echo $?` returns 0 |
@@ -452,6 +494,11 @@ Section 5 -- Python
   [ ] 5.13 No package manager
   [ ] 5.14 Post-install verification
   [ ] 5.15 Homebrew PATH shadows installed Python
+  [ ] 5.16 GUI python3 in range (manifest alignment)
+  [ ] 5.17 GUI python3 differs from terminal
+  [ ] 5.18 GUI python3 import failure
+  [ ] 5.19 GUI python3 not found
+  [ ] 5.20 Linux: same python3
 
 Section 6 -- SSL
   [ ] 6.1 SSL passes
@@ -463,6 +510,9 @@ Section 6 -- SSL
   [ ] 6.7 PEP 668 detection
   [ ] 6.8 Fix applied, still fails
   [ ] 6.9 --yes auto-fix
+  [ ] 6.10 GUI python3 SSL also checked
+  [ ] 6.11 GUI python3 SSL fails
+  [ ] 6.12 GUI python3 same as PYTHON_CMD
 
 Section 7 -- Health
   [ ] 7.1 HTTP 200, fast

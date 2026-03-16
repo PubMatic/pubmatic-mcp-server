@@ -51,6 +51,10 @@ DETECTED_ARCH=""
 DETECTED_DISTRO="unknown"
 PYTHON_CMD=""
 PYTHON_MINOR=""
+# The python3 binary that Claude Desktop (GUI app) will actually resolve from
+# the manifest's "command": "python3". May differ from PYTHON_CMD on macOS
+# where Homebrew shadows /usr/local/bin.
+GUI_PYTHON=""
 
 # ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────────
 has_cmd() { command -v "$1" &>/dev/null; }
@@ -145,6 +149,16 @@ display_and_run_steps() {
         log "Step ${step_num} completed successfully."
     done
     return 0
+}
+
+# Resolve the python3 that Claude Desktop (a GUI app) will find.
+# GUI apps on macOS get a minimal PATH without Homebrew.
+resolve_gui_python() {
+    if [ "$DETECTED_OS" = "Darwin" ]; then
+        GUI_PYTHON=$(PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin command -v python3 2>/dev/null)
+    else
+        GUI_PYTHON=$(command -v python3 2>/dev/null)
+    fi
 }
 
 # ─── STARTUP ───────────────────────────────────────────────────────────────────
@@ -346,16 +360,10 @@ detect_platform() {
 INSTALLED_PYTHON_BIN=""
 
 find_python() {
-    # After an install, prefer the known installed binary path over generic PATH
-    # resolution. This handles the case where Homebrew's python3 (e.g. 3.14)
-    # shadows /usr/local/bin/python3 (which we just symlinked to 3.12).
     if [ -n "$INSTALLED_PYTHON_BIN" ] && [ -x "$INSTALLED_PYTHON_BIN" ]; then
         PYTHON_CMD="$INSTALLED_PYTHON_BIN"
         return
     fi
-    # Also check /usr/local/bin/python3 explicitly — on macOS, /opt/homebrew/bin
-    # comes before /usr/local/bin in PATH, so `command -v python3` may find the
-    # wrong one even after we symlinked our install there.
     if [ -x /usr/local/bin/python3 ]; then
         local usrlocal_ver
         usrlocal_ver=$(/usr/local/bin/python3 --version 2>&1 | awk '{print $2}')
@@ -451,6 +459,50 @@ show_python_install_plan() {
     return 0
 }
 
+verify_gui_python() {
+    resolve_gui_python
+    if [ -z "$GUI_PYTHON" ] || [ ! -x "$GUI_PYTHON" ]; then
+        warn_msg "Claude Desktop may not find python3 in its PATH."
+        log "GUI python3 not found in GUI PATH."
+        return
+    fi
+
+    local gui_version
+    gui_version=$("$GUI_PYTHON" --version 2>&1 | awk '{print $2}')
+    log "Claude Desktop python3: ${GUI_PYTHON} (${gui_version})"
+
+    if [ "$GUI_PYTHON" = "$PYTHON_CMD" ]; then
+        log "GUI python3 is the same as PYTHON_CMD — no divergence."
+        return
+    fi
+
+    if version_in_range "$gui_version" "$MIN_VERSION" "$MAX_VERSION"; then
+        echo "      Claude Desktop will use ${GUI_PYTHON} (${gui_version})."
+        log "GUI python3 ${gui_version} is in range — OK."
+    else
+        warn_msg "Claude Desktop will use ${GUI_PYTHON} (${gui_version}), outside ${MIN_VERSION}–3.13.x."
+        echo "      Your terminal uses ${PYTHON_CMD}, but GUI apps resolve a different python3."
+        log "GUI python3 ${gui_version} is outside supported range."
+    fi
+
+    # Verify mcp_bridge.py stdlib imports work under the GUI python3
+    local import_result
+    import_result=$("$GUI_PYTHON" -c "
+import sys, json, ssl, io, argparse
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+from typing import Optional, Dict, Any
+print('ok')
+" 2>&1)
+
+    if [ "$import_result" != "ok" ]; then
+        warn_msg "Claude Desktop's python3 (${GUI_PYTHON}) cannot import required modules."
+        log "GUI python3 import check failed: ${import_result}"
+    else
+        log "GUI python3 stdlib imports OK."
+    fi
+}
+
 check_python() {
     echo ""
     echo "[5/7] Checking Python installation..."
@@ -469,6 +521,7 @@ check_python() {
             PYTHON_MINOR=$(echo "$current_version" | cut -d. -f1-2)
             CHECK_PYTHON="pass"
             pass_msg "Python ${current_version} is installed (${current_bin})."
+            verify_gui_python
             return
         fi
 
@@ -502,6 +555,7 @@ check_python() {
         PYTHON_MINOR=$(echo "$new_version" | cut -d. -f1-2)
         CHECK_PYTHON="pass"
         pass_msg "Python ${new_version} installed and verified."
+        verify_gui_python
     else
         CHECK_PYTHON="fail"
         fail "Installed Python ${new_version} is still outside the supported range." \
@@ -513,7 +567,8 @@ check_python() {
 # 6. SSL / CERTIFICATE CHECK
 ###############################################################################
 test_ssl_handshake() {
-    $PYTHON_CMD -c "
+    local py="${1:-$PYTHON_CMD}"
+    $py -c "
 import ssl, socket
 try:
     ctx = ssl.create_default_context()
@@ -613,34 +668,58 @@ check_ssl() {
     log "[6/7] SSL certificate check"
 
     local ssl_result
-    ssl_result=$(test_ssl_handshake)
+    ssl_result=$(test_ssl_handshake "$PYTHON_CMD")
 
     if echo "$ssl_result" | grep -q "^ok$"; then
-        CHECK_SSL="pass"
-        pass_msg "SSL handshake to ${MCP_HOST} succeeded."
-        return
-    fi
-
-    local error_detail="${ssl_result#fail:}"
-    log "SSL handshake failed: ${error_detail}"
-    echo "      SSL handshake to ${MCP_HOST} failed."
-
-    show_ssl_fix_plan "$error_detail"
-    if [ $? -ne 0 ]; then
-        return
-    fi
-
-    # Verify after fix
-    ssl_result=$(test_ssl_handshake)
-    if echo "$ssl_result" | grep -q "^ok$"; then
-        CHECK_SSL="pass"
-        pass_msg "SSL certificates configured successfully."
+        log "SSL handshake with ${PYTHON_CMD} succeeded."
     else
-        local post_error="${ssl_result#fail:}"
-        log "SSL still failing after fix: ${post_error}"
-        warn_msg "SSL fix was applied but handshake still fails: ${post_error}"
-        CHECK_SSL="warn"
+        local error_detail="${ssl_result#fail:}"
+        log "SSL handshake failed: ${error_detail}"
+        echo "      SSL handshake to ${MCP_HOST} failed."
+
+        show_ssl_fix_plan "$error_detail"
+        if [ $? -ne 0 ]; then
+            # Also check GUI python SSL even if fix was skipped
+            if [ -n "$GUI_PYTHON" ] && [ "$GUI_PYTHON" != "$PYTHON_CMD" ]; then
+                local gui_ssl
+                gui_ssl=$(test_ssl_handshake "$GUI_PYTHON")
+                if echo "$gui_ssl" | grep -q "^ok$"; then
+                    log "GUI python3 (${GUI_PYTHON}) SSL handshake OK despite PYTHON_CMD failure."
+                fi
+            fi
+            return
+        fi
+
+        # Verify after fix
+        ssl_result=$(test_ssl_handshake "$PYTHON_CMD")
+        if echo "$ssl_result" | grep -q "^ok$"; then
+            log "SSL handshake with ${PYTHON_CMD} succeeded after fix."
+        else
+            local post_error="${ssl_result#fail:}"
+            log "SSL still failing after fix: ${post_error}"
+            warn_msg "SSL fix was applied but handshake still fails: ${post_error}"
+            CHECK_SSL="warn"
+            return
+        fi
     fi
+
+    # Also verify SSL from the GUI python3 if it's a different binary
+    if [ -n "$GUI_PYTHON" ] && [ "$GUI_PYTHON" != "$PYTHON_CMD" ]; then
+        local gui_ssl
+        gui_ssl=$(test_ssl_handshake "$GUI_PYTHON")
+        if echo "$gui_ssl" | grep -q "^ok$"; then
+            log "GUI python3 (${GUI_PYTHON}) SSL handshake to ${MCP_HOST} also OK."
+        else
+            local gui_err="${gui_ssl#fail:}"
+            warn_msg "Claude Desktop's python3 (${GUI_PYTHON}) fails SSL to ${MCP_HOST}: ${gui_err}"
+            log "GUI python3 SSL failed: ${gui_err}"
+            CHECK_SSL="warn"
+            return
+        fi
+    fi
+
+    CHECK_SSL="pass"
+    pass_msg "SSL handshake to ${MCP_HOST} succeeded."
 }
 
 ###############################################################################
@@ -679,7 +758,6 @@ check_health() {
              "Expected 2xx from ${HEALTH_CHECK_URL}, got ${http_code}."
     fi
 
-    # Parse response body with Python if available, otherwise just use HTTP status
     local server_status="unknown"
     if [ -n "$PYTHON_CMD" ] && [ -f "$body_file" ]; then
         server_status=$($PYTHON_CMD -c "
@@ -698,9 +776,8 @@ except:
         rm -f "$body_file"
     fi
 
-    # Check response time threshold
     local is_slow="no"
-    if has_cmd "$PYTHON_CMD" 2>/dev/null; then
+    if [ -n "$PYTHON_CMD" ]; then
         is_slow=$($PYTHON_CMD -c "print('yes' if float('${response_time}') > ${HEALTH_RESPONSE_THRESHOLD} else 'no')" 2>/dev/null || echo "no")
     fi
 
@@ -743,6 +820,11 @@ print_summary() {
     local python_info=""
     if [ -n "$PYTHON_CMD" ]; then
         python_info=$($PYTHON_CMD --version 2>&1 | awk '{print $2}' 2>/dev/null)
+    fi
+    if [ -n "$GUI_PYTHON" ] && [ "$GUI_PYTHON" != "$PYTHON_CMD" ]; then
+        local gui_ver
+        gui_ver=$("$GUI_PYTHON" --version 2>&1 | awk '{print $2}' 2>/dev/null)
+        python_info="${python_info}, Claude Desktop: ${gui_ver}"
     fi
 
     printf " [1/7] %-20s %s\n" "Self-Upgrade" "$(status_for "$CHECK_UPGRADE")"

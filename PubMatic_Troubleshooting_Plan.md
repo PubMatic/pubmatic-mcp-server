@@ -2,7 +2,7 @@
 
 ## Overview
 
-Completely restructure `PubMatic_Troubleshooting.sh` into a modular, ordered pipeline with 8 sections: self-upgrade, network check, DNS check, OS/arch detection, Python validation with optional install, SSL/certificate setup, MCP health check, and manifest alignment verification. Cross-platform support for macOS and Linux. Windows is out of scope (separate script).
+Completely restructure `PubMatic_Troubleshooting.sh` into a modular, ordered pipeline with 7 sections: self-upgrade, network check, DNS check, OS/arch detection, Python validation with optional install (including GUI-PATH manifest alignment), SSL/certificate setup (including GUI-PATH SSL verification), and MCP health check. Cross-platform support for macOS and Linux. Windows is out of scope (separate script).
 
 ---
 
@@ -53,10 +53,9 @@ flowchart TD
   A["1. Self-Upgrade Check"] --> B["2. Network Check"]
   B --> C["3. DNS Check"]
   C --> D["4. OS and Arch Detection"]
-  D --> E["5. Python Check and Install"]
-  E --> F["6. SSL/Certificate Setup"]
+  D --> E["5. Python Check + GUI-PATH Alignment"]
+  E --> F["6. SSL Check + GUI-PATH SSL"]
   F --> G["7. MCP Health Check"]
-  G --> H["8. Manifest Alignment Check"]
 ```
 
 ---
@@ -72,6 +71,7 @@ flowchart TD
 - Remove `set -e` -- each function handles its own errors explicitly
 - ANSI color helpers (`green`, `red`, `yellow`) with `NO_COLOR` environment variable support
 - Status tracking variables: `CHECK_UPGRADE`, `CHECK_NETWORK`, `CHECK_DNS`, `CHECK_PLATFORM`, `CHECK_PYTHON`, `CHECK_SSL`, `CHECK_HEALTH`
+- GUI Python tracking: `GUI_PYTHON` stores the `python3` binary that Claude Desktop (GUI app) will actually resolve, which may differ from the terminal's `PYTHON_CMD` on macOS
 - **Dependency check at startup**: verify `curl` is available, abort early with clear message if not
 
 ---
@@ -314,6 +314,29 @@ Each entry is `"command|description"` -- the script splits on `|` to display the
 - Re-check `python3 --version` or `python --version`
 - Handle PATH/symlink differences (macOS: `/Library/Frameworks/...`, Linux: `/usr/bin/...`, `/usr/local/bin/...`)
 
+#### 5e. GUI-PATH Manifest Alignment 
+
+After validating the terminal's Python, the script also resolves the `python3` that Claude Desktop (a GUI app) will actually find via `resolve_gui_python()`. This addresses the GUI PATH divergence problem where the terminal and the GUI app see different `python3` binaries:
+
+```bash
+resolve_gui_python() {
+    if [ "$DETECTED_OS" = "Darwin" ]; then
+        GUI_PYTHON=$(PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin command -v python3 2>/dev/null)
+    else
+        GUI_PYTHON=$(command -v python3 2>/dev/null)
+    fi
+}
+```
+
+The `verify_gui_python()` function then:
+
+1. Checks if the GUI python3 is a **different binary** from the terminal's validated `PYTHON_CMD`
+2. If different, verifies the GUI python3 version is within the supported range
+3. Verifies all `mcp_bridge.py` stdlib imports work under the GUI python3 (`sys`, `json`, `ssl`, `io`, `argparse`, `urllib.request`, `urllib.error`, `typing`)
+4. Prints an informational message showing which python3 Claude Desktop will use
+
+This check runs as part of `check_python()` — not as a separate section — because it is logically an extension of Python validation. If the GUI python3 has issues, the SSL check (section 6) will also verify it separately.
+
 ### 6. SSL/Certificate Check (`check_ssl`)
 
 **Dependencies used:** `python3` (validated in step 5), `pip` (may need bootstrapping)
@@ -468,6 +491,21 @@ Same `"command|description"` format as the Python install -- steps are displayed
 - Re-run the same `ssl.create_default_context()` + `wrap_socket` test against `mcp.pubmatic.com:443`
 - Status: `pass`, `warn` (user skipped fix), or `fail` (fix attempted but still broken)
 
+#### 6e. GUI-PATH SSL Verification
+
+After the primary SSL check passes (or is fixed), the script also tests SSL from the GUI python3 if it is a **different binary** from `PYTHON_CMD`:
+
+```bash
+if [ -n "$GUI_PYTHON" ] && [ "$GUI_PYTHON" != "$PYTHON_CMD" ]; then
+    gui_ssl=$(test_ssl_handshake "$GUI_PYTHON")
+    ...
+fi
+```
+
+This catches the scenario where the terminal's Python (e.g. Homebrew 3.14) has working SSL, but Claude Desktop's Python (e.g. Apple system 3.9.6) has broken or out-of-date certificates. If the GUI python3's SSL fails, `CHECK_SSL` is set to `warn` — the extension may not work correctly even though the terminal's Python is fine.
+
+The `test_ssl_handshake()` function now accepts an optional python binary argument, defaulting to `$PYTHON_CMD`, so both the primary and GUI SSL checks use the same code path.
+
 ### 7. MCP Server Health Check (`check_health`)
 
 **Dependencies used:** `curl` (primary), `python3` (for detailed response parsing)
@@ -505,11 +543,13 @@ If Python is somehow still broken at this point, we still have the HTTP status c
   - Over threshold: `warn` (reachable but slow)
 - Status: `pass`, `warn`, or `fail`
 
-### 8. Manifest Alignment Check (`check_manifest_alignment`)
+---
 
-**Dependencies used:** The `python3` that Claude Desktop will actually resolve (not the terminal's `python3`)
+### GUI-PATH Manifest Alignment (Design Rationale)
 
-**Why this section exists:** The `manifest.json` uses `"command": "python3"`. Claude Desktop is a GUI application and resolves `python3` via a **different PATH** than the user's terminal:
+> **Note:** This logic was originally tracked as a standalone manifest-alignment phase, but it has been folded into sections 5 and 6 for a cleaner 7-section architecture. The rationale is preserved here for reference.
+
+The `manifest.json` uses `"command": "python3"`. Claude Desktop is a GUI application and resolves `python3` via a **different PATH** than the user's terminal:
 
 | Context | PATH includes | `python3` resolves to |
 |---------|--------------|----------------------|
@@ -517,20 +557,9 @@ If Python is somehow still broken at this point, we still have the HTTP status c
 | Claude Desktop (macOS GUI app) | `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/local/bin` | `/usr/bin/python3` (Apple system, e.g. 3.9.6) or `/usr/local/bin/python3` |
 | Linux GUI app | System PATH | Usually `/usr/bin/python3` |
 
-Without this check, the script could validate Homebrew's Python 3.14 (which is what the terminal sees), while Claude Desktop actually uses Apple's system Python 3.9.6 -- and if that one has broken SSL or is missing, the extension silently fails.
-
-**What it checks:**
-
-1. **Resolve the GUI python3** -- simulate the GUI app's PATH (`/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin` on macOS) and find which `python3` Claude Desktop will use
-2. **Version check** -- verify the GUI python3 is within the supported range (3.8--3.13.x)
-3. **Import check** -- verify all stdlib modules `mcp_bridge.py` uses (`sys`, `json`, `ssl`, `io`, `argparse`, `urllib.request`, `urllib.error`, `typing`) can be imported
-4. **SSL handshake** -- verify the GUI python3 can complete a TLS handshake to `mcp.pubmatic.com:443` (the exact connection `mcp_bridge.py` will make)
+Without these checks, the script could validate Homebrew's Python 3.14 (which is what the terminal sees), while Claude Desktop actually uses Apple's system Python 3.9.6 -- and if that one has broken SSL or is missing, the extension silently fails.
 
 **Key insight:** `mcp_bridge.py` uses **only stdlib modules** -- no third-party packages. This means `pip`, `certifi`, and other third-party tools are only needed for the troubleshooting script's own SSL certificate fix (section 6), not for the bridge itself. The bridge relies on `ssl.create_default_context()` which uses the OS-level certificate store.
-
-- If GUI python3 exists and passes all checks: `pass`
-- If GUI python3 works but version is outside range: `warn` (may still work since bridge is pure stdlib)
-- If GUI python3 is missing or cannot import/connect: `fail`
 
 ---
 
@@ -542,18 +571,19 @@ After all sections complete, print a summary table:
 ==========================================
  PubMatic MCP Server - Sanity Check Summary
 ==========================================
- [1/8] Self-Upgrade      pass
- [2/8] Network            pass
- [3/8] DNS                pass
- [4/8] Platform           pass  (macOS arm64)
- [5/8] Python             pass  (3.12.9)
- [6/8] SSL Certificates   pass
- [7/8] MCP Health         pass  (0.342s)
- [8/8] Manifest Alignment pass  (3.9.6 @ /usr/bin/python3)
+ [1/7] Self-Upgrade      pass
+ [2/7] Network            pass
+ [3/7] DNS                pass
+ [4/7] Platform           pass  (macOS arm64)
+ [5/7] Python             pass  (3.12.9, Claude Desktop: 3.9.6)
+ [6/7] SSL Certificates   pass
+ [7/7] MCP Health         pass  (0.342s)
 ==========================================
 
  Log file: /tmp/pubmatic_troubleshooting_20260312_143022.log
 ```
+
+Note: The Python line includes the Claude Desktop python3 version when it differs from the terminal's Python, providing the user visibility into the GUI-PATH divergence without needing a separate section.
 
 Any `fail` results in a non-zero exit code and a prompt to share the log file with PubMatic support.
 
@@ -574,7 +604,7 @@ Any `fail` results in a non-zero exit code and a prompt to share the log file wi
 - **Cross-platform** -- macOS and Linux handled via `DETECTED_OS`/`DETECTED_ARCH`/`DETECTED_DISTRO`; Windows is a separate script
 - **`--break-system-packages` only when needed** -- detects PEP 668 before using the flag, not applied blindly
 - **`--yes` flag for automation** -- skips all prompts for CI/unattended use, but still prints the step list for auditability
-- **Manifest alignment verification** -- section 8 simulates the GUI app's PATH to verify the exact `python3` Claude Desktop will invoke, catching the "different python3" problem where the terminal sees one Python but the GUI app uses another
+- **Manifest alignment folded into sections 5 & 6** -- rather than a standalone section, the GUI-PATH python3 verification is integrated into the Python check (section 5) and SSL check (section 6). This keeps the script at 7 clean sections while still catching the "different python3" problem where the terminal sees one Python but the GUI app uses another
 - **`mcp_bridge.py` is pure stdlib** -- the bridge uses zero third-party packages (`sys`, `json`, `ssl`, `io`, `argparse`, `urllib`, `typing`), so the script does not need to install any pip packages for the bridge to work; `certifi` and pip are only needed for the troubleshooting script's own SSL fix
 
 ---
