@@ -186,56 +186,127 @@ fi
 - Validate with `sort -V` (same as current script)
 - If valid: print version, set `CHECK_PYTHON="pass"`, continue
 
-#### 5b. If Missing or Out of Range -- Prompt with Danger Warning
+#### 5b. If Missing or Out of Range -- Show Full Plan, Then Confirm
+
+The script builds the exact list of commands it will run (based on detected OS, arch, distro) and **prints every step to the user before asking for confirmation**. The user sees what will happen to their system before anything is touched.
+
+**Example output on macOS arm64:**
 
 ```
-  WARNING: Python 3.8 or higher (up to 3.13.x) is recommended.
+  ============================================================
+  ⚠️  WARNING: Python installation required
+  ============================================================
 
-  This will install Python 3.12.9 on your system.
-  Do you want to proceed? [y/N] (default: No)
+  Current situation:
+    - Python 3 is not installed (or version X.Y.Z is outside 3.8–3.13.x)
+    - The PubMatic MCP Server requires Python 3.8 or higher (up to 3.13.x)
+
+  The following steps will be executed on your system:
+
+    Step 1: curl -fsSL https://www.python.org/ftp/python/3.12.9/python-3.12.9-macos11.pkg -o /tmp/python-3.12.9-macos11.pkg
+            (Download Python 3.12.9 installer from python.org)
+
+    Step 2: sudo installer -pkg /tmp/python-3.12.9-macos11.pkg -target /
+            (Install Python 3.12.9 system-wide — requires admin password)
+
+    Step 3: sudo ln -sf /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12 /usr/local/bin/python3
+            (Symlink python3 so the MCP manifest can find it)
+
+    Step 4: rm -f /tmp/python-3.12.9-macos11.pkg
+            (Clean up downloaded installer)
+
+  ============================================================
+  ⚠️  This modifies your system. Proceed? [y/N] (default: No): 
 ```
 
-- Default is **No** -- Enter or anything other than `y`/`Y` skips install and exits with guidance
-- If `--yes` flag was passed, auto-accept
+**Example output on Ubuntu 22.04 x86_64:**
 
-#### 5c. Install Based on OS, Arch, and Distro
+```
+  ============================================================
+  ⚠️  WARNING: Python installation required
+  ============================================================
+
+  Current situation:
+    - Python 3 is not installed (or version X.Y.Z is outside 3.8–3.13.x)
+    - The PubMatic MCP Server requires Python 3.8 or higher (up to 3.13.x)
+
+  The following steps will be executed on your system:
+
+    Step 1: sudo apt-get update
+            (Refresh package lists)
+
+    Step 2: sudo apt-get install -y software-properties-common
+            (Install prerequisite for adding PPAs)
+
+    Step 3: sudo add-apt-repository -y ppa:deadsnakes/ppa
+            (Add deadsnakes PPA for Python 3.12)
+
+    Step 4: sudo apt-get update
+            (Refresh package lists with new PPA)
+
+    Step 5: sudo apt-get install -y python3.12
+            (Install Python 3.12)
+
+    Step 6: sudo ln -sf /usr/bin/python3.12 /usr/local/bin/python3
+            (Symlink python3 if needed)
+
+  ============================================================
+  ⚠️  This modifies your system. Proceed? [y/N] (default: No): 
+```
+
+**Behavior:**
+- Default is **No** -- pressing Enter or anything other than `y`/`Y` skips the install
+- If skipped: print guidance ("Please install Python 3.8+ manually and re-run this script") and exit
+- If `--yes` flag was passed at script startup: auto-accept (print the plan but skip the prompt)
+- The steps shown are the **exact commands** that will run -- no hidden operations
+
+#### 5c. Install Execution
+
+The script builds the step list dynamically based on OS/arch/distro using `has_cmd`, then executes them sequentially only after user confirmation:
 
 **macOS (any arch):**
-- Tool needed: `curl` (already validated), `installer` (ships with macOS)
-- Download `.pkg` from `python.org`, run `sudo installer -pkg`, symlink `python3`
+- `curl` to download `.pkg`, `installer` to install, `ln -sf` to symlink, `rm` to clean up
 
 **Linux -- detect package manager dynamically:**
 
 ```bash
-install_python_linux() {
-    if has_cmd apt-get; then
-        # Debian/Ubuntu
-        sudo apt-get update
-        sudo apt-get install -y software-properties-common
-        sudo add-apt-repository -y ppa:deadsnakes/ppa
-        sudo apt-get update
-        sudo apt-get install -y python3.12
-    elif has_cmd dnf; then
-        # Fedora / RHEL 8+
-        sudo dnf install -y python3.12
-    elif has_cmd yum; then
-        # CentOS 7 / older RHEL
-        sudo yum install -y python3
-    elif has_cmd apk; then
-        # Alpine
-        sudo apk add python3
-    elif has_cmd pacman; then
-        # Arch Linux
-        sudo pacman -Sy --noconfirm python
-    else
-        echo "Could not detect a supported package manager."
-        echo "Please install Python 3.8+ manually and re-run this script."
-        return 1
+build_python_install_steps() {
+    INSTALL_STEPS=()
+    if [ "$DETECTED_OS" = "Darwin" ]; then
+        INSTALL_STEPS+=(
+            "curl -fsSL ${PYTHON_PKG_URL} -o /tmp/${PYTHON_PKG_FILE}|Download Python ${PYTHON_PKG_VERSION} installer"
+            "sudo installer -pkg /tmp/${PYTHON_PKG_FILE} -target /|Install Python ${PYTHON_PKG_VERSION} system-wide"
+            "sudo ln -sf ${INSTALLED_BIN} /usr/local/bin/python3|Symlink python3"
+            "rm -f /tmp/${PYTHON_PKG_FILE}|Clean up installer"
+        )
+    elif [ "$DETECTED_OS" = "Linux" ]; then
+        if has_cmd apt-get; then
+            INSTALL_STEPS+=(
+                "sudo apt-get update|Refresh package lists"
+                "sudo apt-get install -y software-properties-common|Install PPA prerequisite"
+                "sudo add-apt-repository -y ppa:deadsnakes/ppa|Add deadsnakes PPA"
+                "sudo apt-get update|Refresh with new PPA"
+                "sudo apt-get install -y python3.12|Install Python 3.12"
+            )
+        elif has_cmd dnf; then
+            INSTALL_STEPS+=("sudo dnf install -y python3.12|Install Python 3.12")
+        elif has_cmd yum; then
+            INSTALL_STEPS+=("sudo yum install -y python3|Install Python 3")
+        elif has_cmd apk; then
+            INSTALL_STEPS+=("sudo apk add python3|Install Python 3")
+        elif has_cmd pacman; then
+            INSTALL_STEPS+=("sudo pacman -Sy --noconfirm python|Install Python 3")
+        else
+            # No supported package manager found
+            return 1
+        fi
     fi
 }
 ```
 
-**Key principle:** We don't assume `apt-get` or `dnf` exists. We check which package manager is present using `has_cmd` and use that one.
+Each entry is `"command|description"` -- the script splits on `|` to display the description to the user and then run the exact command.
+
+**Key principle:** We don't assume `apt-get` or `dnf` exists. We check which package manager is present using `has_cmd` and use that one. If none found, guide user to install manually.
 
 #### 5d. Post-Install Verification
 
@@ -266,57 +337,135 @@ except Exception as e:
 - If `ok`: set `CHECK_SSL="pass"`, skip everything else
 - If `fail`: proceed to fix
 
-#### 6b. If SSL Setup Needed -- Bootstrap pip if Missing
+#### 6b. If SSL Setup Needed -- Show Full Plan, Then Confirm
 
-**Problem:** `pip` is not guaranteed. On Debian/Ubuntu, `python3` ships without pip by default.
+Same pattern as the Python install: the script builds the exact list of certificate-related commands it will run, **prints every step to the user**, and asks for confirmation before modifying the certificate store.
+
+**Example output on macOS (Python 3.12):**
+
+```
+  ============================================================
+  ⚠️  WARNING: SSL certificate update required
+  ============================================================
+
+  Current situation:
+    - SSL handshake to mcp.pubmatic.com failed
+    - Error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
+
+  The following steps will be executed to fix SSL certificates:
+
+    Step 1: python3 -m ensurepip --upgrade
+            (Bootstrap pip if not already installed)
+
+    Step 2: sudo python3 -m pip install --upgrade certifi --break-system-packages
+            (Install/update the certifi CA bundle for Python)
+
+    Step 3: bash "/Applications/Python 3.12/Install Certificates.command"
+            (Run Apple's official certificate installer for Python 3.12)
+
+  ============================================================
+  ⚠️  This modifies your system's certificate store. Proceed? [y/N] (default: No): 
+```
+
+**Example output on Ubuntu 22.04:**
+
+```
+  ============================================================
+  ⚠️  WARNING: SSL certificate update required
+  ============================================================
+
+  Current situation:
+    - SSL handshake to mcp.pubmatic.com failed
+    - Error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
+
+  The following steps will be executed to fix SSL certificates:
+
+    Step 1: sudo apt-get install -y ca-certificates
+            (Install/update OS-level CA certificates)
+
+    Step 2: sudo update-ca-certificates
+            (Rebuild the system certificate store)
+
+    Step 3: python3 -m ensurepip --upgrade
+            (Bootstrap pip if not already installed)
+
+    Step 4: python3 -m pip install --upgrade certifi
+            (Install/update the certifi CA bundle for Python)
+
+  ============================================================
+  ⚠️  This modifies your system's certificate store. Proceed? [y/N] (default: No): 
+```
+
+**Behavior:**
+- Default is **No** -- pressing Enter or anything other than `y`/`Y` skips the fix
+- If skipped: print guidance ("SSL certificates need to be configured manually. The MCP server may not work correctly.") and continue (non-fatal, mark as `warn`)
+- If `--yes` flag was passed at script startup: auto-accept (print the plan but skip the prompt)
+
+#### 6c. Certificate Fix Execution
+
+The script builds the step list dynamically based on OS and Python version:
 
 ```bash
-ensure_pip() {
-    if $PYTHON_CMD -m pip --version &>/dev/null; then
-        return 0
-    fi
-    # Try ensurepip (Python stdlib, no internet needed)
-    if $PYTHON_CMD -m ensurepip --upgrade &>/dev/null; then
-        return 0
-    fi
-    # OS-level pip install as last resort
+build_ssl_fix_steps() {
+    SSL_STEPS=()
+
+    # Linux: OS-level CA certificates first
     if [ "$DETECTED_OS" = "Linux" ]; then
         if has_cmd apt-get; then
-            sudo apt-get install -y python3-pip 2>/dev/null && return 0
+            SSL_STEPS+=(
+                "sudo apt-get install -y ca-certificates|Install/update OS CA certificates"
+                "sudo update-ca-certificates|Rebuild system certificate store"
+            )
         elif has_cmd dnf; then
-            sudo dnf install -y python3-pip 2>/dev/null && return 0
+            SSL_STEPS+=(
+                "sudo dnf install -y ca-certificates|Install/update OS CA certificates"
+                "sudo update-ca-trust|Rebuild system certificate store"
+            )
         elif has_cmd yum; then
-            sudo yum install -y python3-pip 2>/dev/null && return 0
+            SSL_STEPS+=(
+                "sudo yum install -y ca-certificates|Install/update OS CA certificates"
+                "sudo update-ca-trust|Rebuild system certificate store"
+            )
         fi
     fi
-    return 1
+
+    # Bootstrap pip if missing (both OS)
+    if ! $PYTHON_CMD -m pip --version &>/dev/null; then
+        SSL_STEPS+=("$PYTHON_CMD -m ensurepip --upgrade|Bootstrap pip")
+    fi
+
+    # Install certifi (both OS)
+    local pip_flags=""
+    if [ "$DETECTED_OS" = "Linux" ]; then
+        # Check if PEP 668 applies (Debian 12+, Ubuntu 23.04+)
+        if $PYTHON_CMD -c "import sysconfig; print(sysconfig.get_path('stdlib'))" 2>/dev/null | grep -q "EXTERNALLY-MANAGED" 2>/dev/null; then
+            pip_flags="--break-system-packages"
+        fi
+    fi
+    SSL_STEPS+=("$PYTHON_CMD -m pip install --upgrade certifi ${pip_flags}|Install/update certifi CA bundle")
+
+    # macOS: Apple's certificate installer
+    if [ "$DETECTED_OS" = "Darwin" ]; then
+        local cert_cmd="/Applications/Python ${PYTHON_MINOR}/Install Certificates.command"
+        if [ -f "$cert_cmd" ]; then
+            SSL_STEPS+=("bash \"${cert_cmd}\"|Run Apple's certificate installer for Python ${PYTHON_MINOR}")
+        fi
+    fi
 }
 ```
 
-Then install certifi:
-```bash
-$PYTHON_CMD -m pip install --upgrade certifi --break-system-packages --quiet 2>/dev/null \
-    || $PYTHON_CMD -m pip install --upgrade certifi --quiet 2>/dev/null
-```
-(`--break-system-packages` is needed on Debian 12+ / Ubuntu 23.04+ with PEP 668, but older systems reject the flag, hence the fallback)
+Same `"command|description"` format as the Python install -- steps are displayed to user, then executed sequentially after confirmation.
 
-**macOS only:** Run `/Applications/Python X.Y/Install Certificates.command` if it exists
+**Key points:**
+- `pip` is NOT assumed to exist -- `ensurepip` bootstraps it if missing (stdlib, no internet)
+- `--break-system-packages` is only added when PEP 668 applies (newer Debian/Ubuntu), not blindly
+- macOS Apple certificate installer step is only shown if the file actually exists
+- Linux `update-ca-certificates` / `update-ca-trust` is only shown if the corresponding package manager is present
 
-**Linux only:** Ensure `ca-certificates` is installed:
-```bash
-if [ "$DETECTED_OS" = "Linux" ]; then
-    if has_cmd apt-get; then
-        sudo apt-get install -y ca-certificates 2>/dev/null
-    elif has_cmd dnf; then
-        sudo dnf install -y ca-certificates 2>/dev/null
-    fi
-fi
-```
+#### 6d. Verify with SSL Handshake
 
-#### 6c. Verify with SSL Handshake (Same Python Check as 6a)
-
-- Re-run the same `ssl.create_default_context()` + `wrap_socket` test
-- Status: `pass`, `warn`, or `fail`
+- Re-run the same `ssl.create_default_context()` + `wrap_socket` test against `mcp.pubmatic.com:443`
+- Status: `pass`, `warn` (user skipped fix), or `fail` (fix attempted but still broken)
 
 ### 7. MCP Server Health Check (`check_health`)
 
@@ -385,12 +534,14 @@ Any `fail` results in a non-zero exit code and a prompt to share the log file wi
 
 - **Only two hard dependencies: `bash` and `curl`** -- everything else is checked with `has_cmd` before use and has fallbacks
 - **`python3` is the canonical command** -- the manifest (`manifest.json`) uses `"command": "python3"`, so the script validates and installs for that exact command
-- **Check-before-install pattern** -- SSL section checks if things already work before modifying anything
-- **Danger prompt defaults to No** -- Python installation is destructive; user must explicitly opt in
+- **Full transparency before any system modification** -- both Python install and SSL certificate fix show the exact commands that will run before asking for user consent
+- **All prompts default to No** -- the script never modifies the system unless the user explicitly types `y`/`Y`
+- **Check-before-install pattern** -- SSL section checks if things already work before even showing the prompt
 - **No `jq` dependency** -- self-upgrade parses GitHub API JSON with `grep`/`sed`
 - **No `pip` assumption** -- pip is bootstrapped via `ensurepip` or OS package manager if missing
 - **No DNS tool assumption** -- falls back through `host` > `nslookup` > `dig` > `curl` exit code 6
 - **No `ping` dependency** -- uses curl for connectivity (ICMP is often blocked by firewalls)
 - **Modular functions** -- each section is a standalone function for testability and readability
 - **Cross-platform** -- macOS and Linux handled via `DETECTED_OS`/`DETECTED_ARCH`/`DETECTED_DISTRO`; Windows is a separate script
-- **`--break-system-packages` with fallback** -- handles PEP 668 on newer Debian/Ubuntu without breaking older systems
+- **`--break-system-packages` only when needed** -- detects PEP 668 before using the flag, not applied blindly
+- **`--yes` flag for automation** -- skips all prompts for CI/unattended use, but still prints the step list for auditability
