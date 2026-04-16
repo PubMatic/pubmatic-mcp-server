@@ -4,7 +4,7 @@
 
 
 MCP_HOST="mcp.pubmatic.com"
-HEALTH_CHECK_URL="https://apps.pubmatic.com/mcpserver/health"
+HEALTH_CHECK_URL="https://apps.pubmatic.com/mcpserver/external/health"
 
 echo ""
 echo "=========================================="
