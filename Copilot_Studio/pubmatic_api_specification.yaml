@@ -1,0 +1,183 @@
+swagger: '2.0'
+info:
+  title: PubMatic MCP Server
+  description: PubMatic MCP Server for external integration with Microsoft Copilot Studio
+  version: 1.0.0
+  contact:
+    name: PubMatic Support
+    url: https://help.pubmatic.com
+host: apps.pubmatic.com
+basePath: /
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+  - text/event-stream
+
+paths:
+  /mcpserver/external/mcp:
+    post:
+      summary: Invoke PubMatic MCP Server
+      description: Send requests to the PubMatic MCP Server for processing. This endpoint supports streaming responses for real-time data delivery.
+      operationId: InvokeServer
+      parameters:
+        - name: pubToken
+          in: header
+          type: string
+          required: true
+          description: PubMatic authentication token (Bearer Token)
+          x-ms-visibility: important
+          x-ms-parameter-hint: "Your PubMatic Bearer Token"
+        - name: resource-id
+          in: header
+          type: string
+          required: false
+          description: Resource identifier for scoping requests to a specific resource
+          x-ms-visibility: important
+          x-ms-parameter-hint: "Optional resource ID"
+        - name: resource-type
+          in: header
+          type: string
+          required: false
+          description: Type of resource (PUBLISHER, DSP, BUYER, or Activate Advertiser)
+          x-ms-visibility: important
+          enum:
+            - PUBLISHER
+            - DSP
+            - BUYER
+            - "Activate Advertiser"
+          x-ms-parameter-hint: "Select resource type"
+        - name: Content-Type
+          in: header
+          type: string
+          required: true
+          default: application/json
+          description: Content type of the request
+          x-ms-visibility: internal
+        - name: Accept
+          in: header
+          type: string
+          required: true
+          default: "application/json, text/event-stream"
+          description: Accepted response content types
+          x-ms-visibility: internal
+        - name: body
+          in: body
+          required: false
+          description: Request payload for MCP Server
+          schema:
+            type: object
+            properties:
+              query:
+                type: string
+                description: Query or command to execute
+              action:
+                type: string
+                description: Specific action to perform
+              parameters:
+                type: object
+                description: Additional parameters for the request
+                additionalProperties: true
+            example:
+              query: "Get publisher data"
+              action: "FETCH_DATA"
+              parameters:
+                limit: 100
+      responses:
+        '200':
+          description: Successful response from MCP Server
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                description: Status of the request (success, pending, error)
+              data:
+                type: object
+                description: Response data from the MCP Server
+                additionalProperties: true
+              message:
+                type: string
+                description: Response message
+              timestamp:
+                type: string
+                format: date-time
+                description: Timestamp of the response
+            example:
+              status: "success"
+              data: {}
+              message: "Request processed successfully"
+              timestamp: "2026-04-19T00:00:00Z"
+        '400':
+          description: Bad request - Invalid parameters or missing required headers
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              error:
+                type: string
+              message:
+                type: string
+        '401':
+          description: Unauthorized - Invalid or expired authentication token
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              error:
+                type: string
+              message:
+                type: string
+        '403':
+          description: Forbidden - Insufficient permissions for the resource
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              error:
+                type: string
+              message:
+                type: string
+        '500':
+          description: Internal server error
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+              error:
+                type: string
+              message:
+                type: string
+      x-ms-agentic-protocol: mcp-streamable-1.0
+      tags:
+        - MCP Server
+
+securityDefinitions:
+  Bearer:
+    type: apiKey
+    name: pubToken
+    in: header
+    description: PubMatic Bearer Token for authentication
+
+security:
+  - Bearer: []
+
+tags:
+  - name: MCP Server
+    description: PubMatic MCP Server operations
+
+x-ms-connector-metadata:
+  - propertyName: Website
+    propertyValue: https://www.pubmatic.com
+  - propertyName: Privacy policy
+    propertyValue: https://www.pubmatic.com/privacy-policy
+  - propertyName: Categories
+    propertyValue: Data,Analytics
+
+x-ms-openapi-version: 2.0
