@@ -1,0 +1,61 @@
+swagger: '2.0'
+info:
+  title: PubMatic MCP Server
+  description: PubMatic MCP Server for external integration with Microsoft Copilot Studio
+  version: 1.0.0
+  contact:
+    name: PubMatic Support
+    url: https://help.pubmatic.com
+host: apps.pubmatic.com
+basePath: /
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+  - text/event-stream
+
+paths:
+  /mcpserver/external/mcp:
+    post:
+      parameters:
+        - name: pubToken
+          in: header
+          type: string
+          required: true
+          description: Pub Token
+          x-ms-visibility: important
+        - name: resource-id
+          in: header
+          type: string
+          required: true
+          description: Resource identifier for scoping requests to a specific resource
+          x-ms-visibility: important
+        - name: resource-type
+          in: header
+          type: string
+          required: true
+          description: Type of resource (PUBLISHER, DSP, BUYER, or Activate Advertiser)
+          x-ms-visibility: important
+        - name: Content-Type
+          in: header
+          type: string
+          required: true
+          default: application/json
+          x-ms-visibility: internal
+        - name: Accept
+          in: header
+          type: string
+          required: true
+          default: application/json, text/event-stream
+          x-ms-visibility: internal
+      responses:
+        '200':
+          description: Immediate Response
+      x-ms-agentic-protocol: mcp-streamable-1.0
+      operationId: InvokeServer
+      summary: Test Prod Server
+      description: Test Prod Server for testing MCP Server
+securityDefinitions: {}
+security: []

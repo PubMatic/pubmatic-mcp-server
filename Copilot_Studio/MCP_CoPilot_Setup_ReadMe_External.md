@@ -1,6 +1,7 @@
 # PubMatic MCP Server Extension Setup Guide for Microsoft Copilot Studio (External)
 
-This document explains how to install and configure the PubMatic MCP Server extension in Microsoft Copilot Studio for external users.  
+This document explains how to install and configure the PubMatic MCP Server extension in Microsoft Copilot Studio for external users using custom header authentication.  
+
 The `.yaml` file enables Copilot Studio to communicate with PubMatic's externally accessible MCP Server.
 
 All screenshots referenced in this guide are stored in the `screenshots/` folder.
@@ -14,102 +15,207 @@ All screenshots referenced in this guide are stored in the `screenshots/` folder
 - External PubMatic authentication details:
   - PubToken (Bearer Token)
   - Resource ID
-  - Resource Type (`PUBLISHER`, `DSP`, `BUYER` or `Activate Advertiser`)
+  - Resource Type (`PUBLISHER`, `BUYER` or `Activate Advertiser`)
 
 ## Refer to the PubMatic API documentation to learn how to generate a PubToken and obtain other required credentials:
 ## https://help.pubmatic.com/activate/reference/get-started-with-pubmatic-apis
 
 ---
 
-## Installation and Configuration Steps
+## Steps to Create and Use a Custom Connector
 
-### Step 1: Access Copilot Studio  
-Navigate to Microsoft Copilot Studio at https://copilotstudio.microsoft.com and sign in with your Microsoft account.
+Prerequisite : Define the API
+Ensure you have the OpenAPI definition (Swagger file) or the API endpoint details ready for the service you want to connect to. For PubMatic, you can use the **`pubmatic_connector.yaml`** file provided in this folder, which contains:
+- Connector name
+- Host Name
+- **Authentication details**: PubToken (Bearer Token), Resource ID, and Resource Type
+- **Base URL**: `https://apps.pubmatic.com`
+- **Main Endpoint**: `/mcpserver/external/mcp`
 
-![Step 1](./screenshots/Step1_Access_Copilot_Studio.png)
+## Step-by-Step Configuration
 
----
+### **Step 1: Access Copilot Studio**
 
-### Step 2: Create or Open an Agent  
-Create a new agent or open an existing one where you want to add the PubMatic MCP Server.
+1. Open your web browser
+2. Navigate to: **https://copilotstudio.microsoft.com**
+3. Click **Sign in** 
+4. Enter your Microsoft account credentials
 
-![Step 2](./screenshots/Step2_Open_Agent.png)
-
----
-
-### Step 3: Access Plugin Settings  
-In the agent editor, navigate to the **Plugins** section to manage integrations.
-
-![Step 3](./screenshots/Step3_Access_Plugins.png)
-
----
-
-### Step 4: Add a New Plugin  
-Click **Add Plugin** and select **Create from OpenAPI** or **Upload Custom Plugin**.
-
-![Step 4](./screenshots/Step4_Add_Plugin.png)
+**What you'll see:**
+- Home dashboard
+- Left sidebar with navigation options
 
 ---
 
-### Step 5: Upload the API Specification  
-Upload or paste the PubMatic `.yaml` API specification file.
+### **Step 2: Navigate to Tools Section**
 
-![Step 5](./screenshots/Step5_Upload_API_Spec.png)
-
----
-
-### Step 6: Configure Authentication  
-Provide the following authentication credentials:
-
-- **PubToken**: Your PubMatic Bearer Token
-- **Resource ID**: Your Resource ID
-- **Resource Type**: Select from `PUBLISHER`, `DSP`, `BUYER`, or `Activate Advertiser`
-
-Click **Save**.
-
-![Step 6](./screenshots/Step6_Configure_Auth.png)
+1. On the left sidebar, click the **Tools** icon (grid/square icon)
+2. You'll see the **Tools** page with:
+   - **+ New tool** button (top-left)
+   - List of existing tools
+   - Search functionality
 
 ---
 
-### Step 7: Verify Plugin Connection  
-Test the connection to ensure the plugin is properly configured.
+### **Step 3: Create a New Tool**
 
-![Step 7](./screenshots/Step7_Verify_Connection.png)
+1. Click the **+ New tool** button
+2. A modal dialog appears: **"New tool"**
+3. Review the available tool types:
+   - **Prompt** - Apply AI to text, documents, or images
+   - **Agent Flow** - Predictable automations
+   - **Computer use** - Web and desktop interaction
+   - **Model Context Protocol** - Open standard for connecting agents to data
+   - **Custom Connector** ← **✅ SELECT THIS ONE**
+   - **REST API**
 
----
-
-### Step 8: Enable Plugin  
-Ensure the PubMatic MCP Server plugin is enabled in your agent configuration.
-
-![Step 8](./screenshots/Step8_Enable_Plugin.png)
-
----
-
-### Step 9: Review Available Operations  
-Open the plugin configuration to review the available operations and endpoints.
-
-![Step 9](./screenshots/Step9_Review_Operations.png)
+4. Click on **Custom Connector** option
+   - **Description**: "External services and data sources"
 
 ---
 
-### Step 10: Test the Integration  
-In the agent test panel, issue a query that leverages the PubMatic MCP Server.
+### **Step 4: Redirect to Power Apps**
 
-![Step 10](./screenshots/Step10_Test_Integration.png)
+After selecting **Custom Connector**, you will be redirected to **Power Apps** (make.powerapps.com):
+
+1. The page automatically opens the **Custom connectors** section
+2. Click **+ New custom connector** button
+3. A dropdown menu appears with options:
+   - **Create from blank**
+   - **Import an OpenAPI file** ← **✅ SELECT THIS ONE**
+   - **Import from GitHub**
+   - **Create from Azure Service (Preview)**
+
+4. Select **Import an OpenAPI file**
 
 ---
 
-### Step 11: Deploy Your Agent  
-Once configured, deploy your agent to make it available to users.
+### **Step 5: Upload and Configure API File**
 
-![Step 11](./screenshots/Step11_Deploy_Agent.png)
+1. **Select the OpenAPI/Swagger file**:
+   - Choose the **pubmatic_connector.yaml** file from your system
+   
+2. **Enter Connector Name**:
+   - Name: `PubMatic MCP Server` (or your preferred name)
+   - This name will be displayed in Copilot Studio
+
+3. Click **Continue** or **Create**
 
 ---
 
-### Step 12: Use MCP Server via Copilot Studio  
-Users can now interact with the agent and leverage PubMatic MCP Server capabilities through natural language queries.
+### **Step 6: Configure General Information**
 
-![Step 12](./screenshots/Step12_Query_Usage.png)
+The connector editor opens with the **General** tab selected.
+
+**Required Configuration:**
+
+| Field | Value | Example |
+|-------|-------|---------|
+| **Connector icon** | Upload a .PNG or .JPG file (max 1MB) | PubMatic logo |
+| **Icon background color** | Hex color code | `#007BA7` (PubMatic blue) |
+| **Description** | Brief description | "PubMatic MCP Server for managing publisher/advertiser data" |
+| **Host** | API host domain | `apps.pubmatic.com` |
+| **Base URL** | API base path | `/` |
+
+**Steps:**
+
+1. Click **Upload connector icon** 
+2. Select your icon file (PNG or JPF, recommended 32x32 px)
+3. Click on the **color picker** and set background color (or enter hex code)
+4. Enter **Host**: `apps.pubmatic.com`
+5. Enter **Base URL**: `/`
+6. Enter **Description**: "PubMatic MCP Server for external API access"
+
+---
+
+### **Step 7: Configure Authentication**
+
+1. Click the **Security** tab
+2. Under **Authentication type**, select: **No authentication**
+
+
+**Note**: If custom headers option isn't visible in Security, you can add them as part of the action definition in the next step.
+
+---
+
+### **Step 8: Define API Actions**
+
+1. Click the **Definition** tab
+2. Keep it same as it is.
+3. Click **Save** for each action
+4. Repeat for additional endpoints
+
+---
+
+### **Step 9: Test the Connector**
+
+1. Click the **Test** tab (within the custom connector editor)
+2. For each action you created:
+   - Click **Test operation**
+   - Fill in required parameters:
+     - `pubToken`: Paste your valid PubMatic Bearer Token
+     - `resource-id`: Enter your Resource ID
+     - `resource-type`: Select PUBLISHER, BUYER, or Activate Advertiser
+   - Click **Test operation**
+   
+3. **Expected Result**: 
+   - ✅ Response status: **200 OK**
+   - ✅ Response body contains valid data
+   - ✅ No error messages
+
+**Troubleshooting Test Failures:**
+- ❌ **401 Unauthorized**: Verify PubToken is correct and not expired
+- ❌ **404 Not Found**: Verify resource-id and resource-type are valid
+- ❌ **500 Server Error**: Contact PubMatic support
+
+---
+
+### **Step 10: Save and Publish Connector**
+
+1. Click **Update connector** button (top-right)
+2. Wait for the connector to be saved (status: "Saved")
+
+---
+
+### **Step 11: Return to Copilot Studio**
+
+1. Go back to **Copilot Studio** (https://copilotstudio.microsoft.com)
+2. Navigate to your **Agent**.
+3. Creae a blank Agent. 
+4. Save the Agent and click on agent which was created.
+3. Go to on the Tool Tab of that Agent
+4. Click  **+ Add a tool**
+5. Select All and Search for your newly created connector: **"PubMatic MCP Server"**
+6. Select it to add to your agent after making the new connection.
+
+---
+
+### **Step 12: Configure Tools Details**
+
+1. Within your agent, go to the **Tools** tab
+2. You will see 4 sections
+    - Details **Check the details. Make sure connection is established**
+    - Inputs **Check the input fields. Fill the details**
+    - Tools **List of Tools been shown**
+    - Resources **List of resource if any**.
+
+3. Enter the inputs fields
+  - Pub Token
+  - Resource ID
+  - Resource Type
+
+4. Save it and make sure it is enabled.
+5. Once Saved, Click on Refresh icon on Tools section
+6. Tools will be Loaded
+
+---
+
+### **Step 13: Test the Agent**
+
+1. In Copilot Studio, open your agent
+2. Click **Test your agent**
+3. Ask the queries related to features provided by PubMatic to which it will get connected to PubMatic MCP Server
+4. Shown in such a way
 
 ---
 
@@ -119,7 +225,6 @@ Users can now interact with the agent and leverage PubMatic MCP Server capabilit
 - Ensure the Resource ID and Resource Type are correctly specified.
 - Check that the `.yaml` file follows OpenAPI 2.0 specification.
 - Restart Copilot Studio if changes are not reflected immediately.
-- Review the plugin logs for detailed error messages.
 
 ---
 
@@ -136,8 +241,6 @@ Required headers for all requests:
 - `pubToken`: Your PubMatic Bearer Token
 - `Content-Type`: `application/json`
 - `Accept`: `application/json, text/event-stream`
-
-Optional headers:
 - `resource-id`: Your Resource ID
 - `resource-type`: Your Resource Type
 
