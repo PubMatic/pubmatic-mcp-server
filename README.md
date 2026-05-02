@@ -22,6 +22,7 @@ This repository contains specifications for the following tools:
 
 - **[Deal Management](./Deal%20Management/)**: Tools for deal creation and troubleshooting, enabling seamless communication between publishers, buyers, and DSPs
 - **[Inventory Discovery](./Inventory%20Discovery/)**: Buyer-focused tools to discover and curate supply packages with structured, machine-readable outputs
+- **[Activate Media Buy Management](./Activate%20Media%20Buy%20Management/)**: Comprehensive AdCP-compliant tools for campaign creation, management, creative handling, and performance monitoring across the full media buy lifecycle
 
 ## Benefits of Agent-to-Agent Communication
 
