@@ -7,14 +7,14 @@ This document explains how to install and configure the PubMatic MCP Server exte
 * **ChatGPT Account** with Developer mode on.
 * **External PubMatic authentication details**:
   * Resource ID
-  * Resource Type (PUBLISHER or Activate Advertiser)
+  * Resource Type (PUBLISHER or ACTIVATE ADVERTISER)
 
 **NOTE:**
 * ChatGPT does not support adding custom headers.
 * Resource ID and Resource Type will be configured in the MCP URL.
 * **Examples:**
-  * `https://mcp.pubmatic.com/mcp?resource-id=161760&resource-type=PUBLISHER`
-  * `https://mcp.pubmatic.com/mcp?resource-id=27944&resource-type=ACTIVATE ADVERTISER`
+  * `https://mcp.pubmatic.com/mcp?resource-id=<resource-id>&resource-type=PUBLISHER`
+  * `https://mcp.pubmatic.com/mcp?resource-id=<resource-id>&resource-type=ACTIVATE%20ADVERTISER`
 
 ## Step-by-Step Configuration
 
@@ -46,7 +46,7 @@ To get started, you'll need to enable Developer Mode in ChatGPT:
 
 **What happens next:** After you create your app, you'll be automatically redirected to a login page. The specific login page depends on your resource type. For example:
 * If your resource-type is PUBLISHER (1), you'll be redirected to `/login/publisher`.
-* If your resource-type is ACTIVATE_ADVERTISER (14), you'll be redirected to `/login/activate`.
+* If your resource-type is ACTIVATE ADVERTISER (14), you'll be redirected to `/login/activate`.
 
 ### Step 3: Authenticate Your Account
 1. **Enter your credentials**: Log in with your user account credentials on the redirected login page.
@@ -86,7 +86,7 @@ Your app is now ready to use!
 
 ### Phase 1 Release Features:
 * The MCP URL is integrated into your GPT app with fixed `resource-id` and `resource-type` query parameters that cannot be changed after creation.
-  * Example: `https://mcp.pubmatic.com/mcp?resource-id=161760&resource-type=PUBLISHER`
+  * Example: `https://mcp.pubmatic.com/mcp?resource-id=<resource-id>&resource-type=PUBLISHER`
 * There is no option to edit or update the MCP URL once the app has been created.
 * To connect to a different account, you must create and integrate a new app with the appropriate `resource-id` and `resource-type`.
 
