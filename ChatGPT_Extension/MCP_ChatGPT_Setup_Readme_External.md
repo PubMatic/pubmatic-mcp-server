@@ -7,7 +7,7 @@ This document explains how to install and configure the PubMatic MCP Server exte
 * **ChatGPT Account** with Developer mode on.
 * **External PubMatic authentication details**:
   * Resource ID
-  * Resource Type (PUBLISHER, BUYER or Activate Advertiser)
+  * Resource Type (PUBLISHER or Activate Advertiser)
 
 **NOTE:**
 * ChatGPT does not support adding custom headers.
@@ -60,7 +60,7 @@ Invalid Credentials
 Once you've successfully logged in, you'll be automatically redirected back to your app. You should see a confirmation message stating: `"[your-app-name] is now connected"`.
 ![Screenshot 7](./screenshots/Screenshot7_MCP_Server_Successfully_Connected.png)
 4. **Select the App Again**: Click on the app created again, You can see the details of configuration provided while creating the APP. Tools being shown loaded
-![Screenshot 8](./screenshots/Screenshot8_MCP_Server_Tools_Loaded_Testing.png)
+![Screenshot 8](./screenshots/Screenshot8_MCP_Server_Tools_loaded_Testing.png)
 
 Your app is now ready to use!
 
