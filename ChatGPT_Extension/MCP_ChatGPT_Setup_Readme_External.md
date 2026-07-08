@@ -70,9 +70,6 @@ Your app is now ready to use!
    * **Using the menu**: Click the **"+"** button in the search bar, select **More**, then locate and click your app name.
    ![Screenshot 9](./screenshots/Screenshot9_MCP_Server_Connected_Selection.png)
    
-   * **Using a shortcut**: Type `/your-app-name` directly in the prompt field—ChatGPT will auto-suggest your app, and you can select it from the dropdown.
-   ![Screenshot 10](./screenshots/Screenshot10_MCP_Server_Connected_Selection_OptionB.png)
-   
 
 ### Step 5: Query Your App
 *(Sample Query: List all tools supported)*
