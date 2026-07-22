@@ -44,7 +44,7 @@ Note: Developer Mode is required to create and install personal plugins.
 2. Fill in the required information:
   - **Name**: Enter a unique, descriptive name for your application.
   - **Description**: Enter a description for your application.
-  - **Connection**(Server URL) : Provide your Model Context Protocol URL, including both the `resource-id` and `resource-type` parameters (both are required).
+  - **Connection (Server URL)**: Enter your Model Context Protocol URL with the `resource-id` and `resource-type` parameters (both required). Refer to the **Key Features & Prerequisites** section for URL examples.
   - **Authentication**: Select **OAuth** as your authentication type.
 3. Review and check the required consent checkbox to proceed.
 4. Click **"Create"** to complete the setup.
