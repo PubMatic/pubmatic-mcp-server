@@ -2,11 +2,12 @@
 
 The PubMatic MCP connector connects Claude to your PubMatic account through the PubMatic MCP server. By connecting Claude and the PubMatic MCP server, you can create, manage, and troubleshoot deals and campaigns through Claude chat, using natural language.
 For example, you could ask Claude to:
-- Pull a report or troubleshoot delivery issues
+- Pull a report or troubleshoot deal related issues
 - Create or update campaigns, media buys, or deals
 - Look up targeting options, inventory, or catalog data
-- The specific tools you can access depend on the type of account you have and your PubMatic permissions.
-- Use the following information to set up the Claude connector.
+
+The specific tools you can access depend on the type of account you have and your PubMatic permissions.
+Use the following information to set up the Claude connector.
 
 ## How the PubMatic MCP connector works
 After you enable the connector in Claude, Claude uses the tools in the PubMatic MCP Server to interact with your data. The PubMatic MCP Server connector grants Claude permission to access and modify your PubMatic data – your deals and campaigns – based on your account permissions. Claude can only see and access what your account has access to.
@@ -15,7 +16,7 @@ See [PubMatic MCP Server Specifications](https://github.com/PubMatic/pubmatic-mc
 
 ## Prerequisites
 Before you connect, make sure you have:
-- The latest version of Claude Desktop
+- Claude Desktop
 - An active PubMatic account, with access to the connector
 - Your PubMatic credentials - you'll log into your account as part of the connection process.
 
@@ -67,7 +68,7 @@ Now that you're set up, here are some sample prompts to show you what's possible
 - Access is limited to data your authenticated PubMatic account is permitted to see.
 - PubMatic does not need full Claude conversation transcripts to operate the connector.
 
-For legal details on collection, storage, retention, and third parties, see the PubMatic Properties Privacy Policy.
+For legal details on collection, storage, retention, and third parties, see the [PubMatic Properties Privacy Policy](https://pubmatic.com/legal/properties-privacy-policy/).
 
 ## FAQ
 
