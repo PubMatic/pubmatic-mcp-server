@@ -16,7 +16,6 @@ See [PubMatic MCP Server Specifications](https://github.com/PubMatic/pubmatic-mc
 
 ## Prerequisites
 Before you connect, make sure you have:
-- Claude Desktop
 - An active PubMatic account, with access to the connector
 - Your PubMatic credentials - you'll log into your account as part of the connection process.
 
